@@ -112,12 +112,16 @@ body {
 .arrows-svg path {
     fill: none;
     stroke-width: 1.5;
-    opacity: 0.5;
-    transition: opacity 0.2s, stroke-width 0.2s;
+    opacity: 0.35;
+    transition: opacity 0.2s, stroke-width 0.2s, filter 0.2s;
 }
 .arrows-svg path.highlighted {
     opacity: 1;
-    stroke-width: 2.5;
+    stroke-width: 3;
+    filter: drop-shadow(0 0 4px currentColor);
+}
+.arrows-svg path.dimmed {
+    opacity: 0.08;
 }
 
 .cat-label {
@@ -138,7 +142,7 @@ body {
     overflow: hidden;
     cursor: move;
     user-select: none;
-    transition: box-shadow 0.15s;
+    transition: box-shadow 0.15s, opacity 0.2s, filter 0.2s;
     font-size: 11px;
 }
 .tbl:hover {
@@ -147,7 +151,16 @@ body {
 }
 .tbl.selected {
     z-index: 100 !important;
-    box-shadow: 0 0 0 3px rgba(56,189,248,0.5), 0 8px 32px rgba(0,0,0,0.5);
+    box-shadow: 0 0 0 3px rgba(56,189,248,0.6), 0 0 20px rgba(56,189,248,0.4), 0 8px 32px rgba(0,0,0,0.5);
+}
+.tbl.hl-source {
+    z-index: 100 !important;
+    box-shadow: 0 0 0 3px rgba(250,204,21,0.7), 0 0 24px rgba(250,204,21,0.35);
+}
+.tbl.dimmed {
+    opacity: 0.2;
+    filter: grayscale(0.6);
+}
 }
 .tbl-header {
     padding: 6px 10px;
@@ -894,20 +907,31 @@ function updateArrows() {
 // --- Highlight ---
 function highlightRelated(name) {
     if (!window._relationships) return;
+    const related = new Set();
+    window._relationships.forEach(r => {
+        if (r.from === name) related.add(r.to);
+        if (r.to === name) related.add(r.from);
+    });
+    // Dim all unrelated tables
+    document.querySelectorAll('.tbl').forEach(t => {
+        const n = t.dataset.name;
+        if (n === name) { t.classList.add('hl-source'); }
+        else if (related.has(n)) { t.classList.add('selected'); }
+        else { t.classList.add('dimmed'); }
+    });
+    // Highlight/dim arrows
     document.querySelectorAll('.arrows-svg path').forEach(p => {
         if (p.dataset.from === name || p.dataset.to === name) {
             p.classList.add('highlighted');
+        } else {
+            p.classList.add('dimmed');
         }
-    });
-    window._relationships.forEach(r => {
-        if (r.from === name) { const el = document.getElementById('tbl-' + r.to); if (el) el.classList.add('selected'); }
-        if (r.to === name) { const el = document.getElementById('tbl-' + r.from); if (el) el.classList.add('selected'); }
     });
 }
 function unhighlightAll() {
-    document.querySelectorAll('.arrows-svg path.highlighted').forEach(p => p.classList.remove('highlighted'));
-    document.querySelectorAll('.tbl.selected').forEach(t => {
-        if (t.dataset.name !== dragTarget) t.classList.remove('selected');
+    document.querySelectorAll('.arrows-svg path.highlighted, .arrows-svg path.dimmed').forEach(p => { p.classList.remove('highlighted'); p.classList.remove('dimmed'); });
+    document.querySelectorAll('.tbl.selected, .tbl.dimmed, .tbl.hl-source').forEach(t => {
+        if (t.dataset.name !== dragTarget) { t.classList.remove('selected'); t.classList.remove('dimmed'); t.classList.remove('hl-source'); }
     });
 }
 
