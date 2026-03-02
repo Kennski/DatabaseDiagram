@@ -305,7 +305,7 @@ body {
             <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 4.69 2 8v8c0 3.31 4.48 6 10 6s10-2.69 10-6V8c0-3.31-4.48-6-10-6zm0 2c4.42 0 8 1.79 8 4s-3.58 4-8 4-8-1.79-8-4 3.58-4 8-4zm8 12c0 2.21-3.58 4-8 4s-8-1.79-8-4v-2.54C5.82 14.4 8.74 15 12 15s6.18-.6 8-1.54V16zm0-4c0 2.21-3.58 4-8 4s-8-1.79-8-4V9.46C5.82 10.4 8.74 11 12 11s6.18-.6 8-1.54V12z"/></svg>
         </div>
         <h1>Database Diagram Tool</h1>
-        <p>Connect to any MySQL / MariaDB database or upload a SQL dump to generate interactive diagrams</p>
+        <p>Connect to any MySQL, PostgreSQL, or SQL Server database — or upload a SQL dump — to generate interactive diagrams</p>
     </div>
 
     <div class="tabs">
@@ -317,6 +317,16 @@ body {
     <div id="panel-connect" class="panel active">
         <div class="card">
             <form id="connect-form">
+                <div class="form-row full">
+                    <div class="form-group">
+                        <label>Database Type</label>
+                        <select id="db-type">
+                            <option value="mysql" selected>MySQL / MariaDB</option>
+                            <option value="postgres">PostgreSQL</option>
+                            <option value="mssql">SQL Server</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label>Host</label>
@@ -330,11 +340,11 @@ body {
                 <div class="form-row">
                     <div class="form-group">
                         <label>Username</label>
-                        <input type="text" id="db-user" placeholder="root" required>
+                        <input type="text" id="db-user" placeholder="root">
                     </div>
                     <div class="form-group">
-                        <label>Password</label>
-                        <input type="password" id="db-password" placeholder="••••••••">
+                        <label>Password <span style="font-weight:400;text-transform:none;color:#64748b">(optional)</span></label>
+                        <input type="password" id="db-password" placeholder="leave blank if none">
                     </div>
                 </div>
                 <div class="form-row full">
@@ -432,6 +442,17 @@ uploadArea.addEventListener('drop', (e) => {
     }
 });
 
+// Database type → default port / placeholder
+const dbDefaults = { mysql: { port: 3306, user: 'root' }, postgres: { port: 5432, user: 'postgres' }, mssql: { port: 1433, user: 'sa' } };
+document.getElementById('db-type').addEventListener('change', function() {
+    const d = dbDefaults[this.value] || dbDefaults.mysql;
+    const portEl = document.getElementById('db-port');
+    const userEl = document.getElementById('db-user');
+    portEl.placeholder = d.port;
+    if (!portEl.value || Object.values(dbDefaults).some(v => v.port == portEl.value)) portEl.value = d.port;
+    userEl.placeholder = d.user;
+});
+
 // Recent connections (localStorage)
 function loadRecent() {
     const items = JSON.parse(localStorage.getItem('dbdiagram_recent') || '[]');
@@ -443,7 +464,8 @@ function loadRecent() {
     items.forEach((item, i) => {
         const div = document.createElement('div');
         div.className = 'recent-item';
-        div.innerHTML = `<div class="info">${item.user}@${item.host}:${item.port} <span>/ ${item.database}</span></div><button class="remove" data-idx="${i}">&times;</button>`;
+        const typeLabel = item.dbType === 'postgres' ? 'PG' : item.dbType === 'mssql' ? 'MSSQL' : 'MySQL';
+        div.innerHTML = `<div class="info"><span style="color:#60a5fa;margin-right:6px">[${typeLabel}]</span>${item.user || '(no user)'}@${item.host}:${item.port} <span>/ ${item.database}</span></div><button class="remove" data-idx="${i}">&times;</button>`;
         div.addEventListener('click', (e) => {
             if (e.target.classList.contains('remove')) {
                 items.splice(parseInt(e.target.dataset.idx), 1);
@@ -451,9 +473,11 @@ function loadRecent() {
                 loadRecent();
                 return;
             }
+            document.getElementById('db-type').value = item.dbType || 'mysql';
+            document.getElementById('db-type').dispatchEvent(new Event('change'));
             document.getElementById('db-host').value = item.host;
             document.getElementById('db-port').value = item.port;
-            document.getElementById('db-user').value = item.user;
+            document.getElementById('db-user').value = item.user || '';
             document.getElementById('db-password').value = '';
             document.getElementById('db-name').value = item.database;
         });
@@ -465,7 +489,7 @@ loadRecent();
 function saveRecent(conn) {
     let items = JSON.parse(localStorage.getItem('dbdiagram_recent') || '[]');
     // Remove duplicate
-    items = items.filter(i => !(i.host === conn.host && i.port === conn.port && i.user === conn.user && i.database === conn.database));
+    items = items.filter(i => !(i.host === conn.host && i.port === conn.port && i.user === conn.user && i.database === conn.database && (i.dbType||'mysql') === (conn.dbType||'mysql')));
     items.unshift(conn);
     if (items.length > 5) items = items.slice(0, 5);
     localStorage.setItem('dbdiagram_recent', JSON.stringify(items));
@@ -493,16 +517,19 @@ document.getElementById('connect-form').addEventListener('submit', async (e) => 
     const errEl = document.getElementById('connect-error');
     errEl.classList.remove('visible');
 
+    const dbType = document.getElementById('db-type').value;
+    const defaultPort = dbDefaults[dbType]?.port || 3306;
     const conn = {
+        dbType,
         host: document.getElementById('db-host').value.trim(),
-        port: parseInt(document.getElementById('db-port').value) || 3306,
+        port: parseInt(document.getElementById('db-port').value) || defaultPort,
         user: document.getElementById('db-user').value.trim(),
         password: document.getElementById('db-password').value,
         database: document.getElementById('db-name').value.trim()
     };
 
-    if (!conn.host || !conn.user || !conn.database) {
-        errEl.textContent = 'Please fill in all required fields.';
+    if (!conn.host || !conn.database) {
+        errEl.textContent = 'Please fill in host and database name.';
         errEl.classList.add('visible');
         return;
     }
@@ -518,7 +545,7 @@ document.getElementById('connect-form').addEventListener('submit', async (e) => 
         if (!res.ok) throw new Error(data.error || 'Connection failed');
 
         hideLoading();
-        saveRecent({ host: conn.host, port: conn.port, user: conn.user, database: conn.database });
+        saveRecent({ dbType: conn.dbType, host: conn.host, port: conn.port, user: conn.user, database: conn.database });
         loadRecent();
         goToDiagram(data);
     } catch (err) {

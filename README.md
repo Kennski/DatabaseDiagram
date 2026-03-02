@@ -1,13 +1,14 @@
 # DatabaseDiagram
 
-An interactive web-based tool for visualizing database schemas. Connect to a live MySQL/MariaDB database or paste a SQL dump to instantly generate searchable table lists and draggable visual diagrams.
+An interactive web-based tool for visualizing database schemas. Connect to a live **MySQL**, **PostgreSQL**, or **SQL Server** database — or paste / upload a SQL dump — to instantly generate searchable table lists and draggable visual diagrams.
 
 ---
 
 ## Features
 
-- **Live Database Connection** — Connect directly to any MySQL or MariaDB database and generate diagrams on the fly
-- **SQL Import** — Paste or upload a `.sql` dump file (up to 50 MB) without needing a live database
+- **Live Database Connection** — Connect directly to MySQL / MariaDB, PostgreSQL, or Microsoft SQL Server and generate diagrams on the fly
+- **SQL Import** — Paste or upload a `.sql` dump file (up to 50 MB) without needing a live database. Supports MySQL, PostgreSQL, and SQL Server dump syntax
+- **Password Optional** — Password field is optional for all database types; SQL Server also supports Windows Authentication (no username)
 - **Table List View** — Searchable, filterable list of all tables with columns, types, keys, and foreign key relationships
 - **Visual Diagram** — Interactive canvas with draggable table boxes and curved FK arrows showing relationships
 - **Auto-Categorization** — Tables are automatically grouped into color-coded categories (ASP.NET Identity, Hangfire, EF Migrations, and prefix-based groups)
@@ -24,7 +25,10 @@ An interactive web-based tool for visualizing database schemas. Connect to a liv
 
 - [Node.js](https://nodejs.org/) (v18 or later recommended)
 - npm (included with Node.js)
-- A MySQL or MariaDB database (optional — only needed for live connections)
+- A supported database (optional — only needed for live connections):
+  - MySQL or MariaDB
+  - PostgreSQL
+  - Microsoft SQL Server
 
 ---
 
@@ -63,8 +67,8 @@ An interactive web-based tool for visualizing database schemas. Connect to a liv
 
 1. Open [http://localhost:3000](http://localhost:3000) in your browser
 2. Choose a connection method:
-   - **Live Connection** — Enter your database host, port, username, password, and database name, then click **Connect & Generate**
-   - **SQL File / Paste** — Drag and drop a `.sql` file onto the upload area, or paste SQL content into the text box, then click **Parse & Generate**
+   - **Live Connection** — Select your database type (MySQL, PostgreSQL, or SQL Server), enter the connection details, and click **Connect & Generate**. The port updates automatically when you switch database types. Password is optional for all types.
+   - **SQL File / Paste** — Drag and drop a `.sql` file onto the upload area, or paste SQL content into the text box, then click **Parse & Generate**. Works with MySQL, PostgreSQL, and SQL Server dump formats.
 3. You will be taken to the **Table List** view showing all tables, columns, and relationships
 4. Click **Visual Diagram** in the navigation bar to see the interactive visual diagram
 5. Use the diagram controls:
@@ -121,7 +125,7 @@ node generate_visual_diagram.js
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/schema` | Connect to a live database and return its schema |
+| `POST` | `/api/schema` | Connect to a live database and return its schema. Send `dbType` (`mysql`, `postgres`, or `mssql`), `host`, `port`, `user`, `password` (optional), and `database` |
 | `POST` | `/api/schema-from-sql` | Parse a SQL dump string and return the schema |
 
 ---
