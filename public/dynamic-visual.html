@@ -256,8 +256,9 @@ body {
     position: absolute;
     border: 1.5px solid #38bdf8;
     background: rgba(56, 189, 248, 0.08);
-    pointer-events: none;
+    cursor: grab;
 }
+.minimap-viewport:active { cursor: grabbing; }
 
 .toast {
     position: fixed;
@@ -1008,8 +1009,13 @@ function updateMinimap() {
 function minimapNav(e) {
     const mm = document.getElementById('minimap');
     const mc = document.getElementById('minimapCanvas');
+    const vp = document.getElementById('minimapViewport');
     const wrapper = document.getElementById('canvasWrapper');
     if (!mm || !mc || !wrapper) return;
+
+    // Don't handle if the drag started on the viewport (handled separately)
+    if (e.target === vp) return;
+
     const rect = mm.getBoundingClientRect();
     const scaleX = mc.width / window._CANVAS_W;
     const scaleY = mc.height / window._CANVAS_H;
@@ -1025,6 +1031,46 @@ function minimapNav(e) {
     panY = -(my - wH / zoom / 2);
     applyTransform();
 }
+
+// --- Minimap viewport drag ---
+(function() {
+    let dragging = false;
+    let startMX, startMY, startPanX, startPanY;
+
+    document.addEventListener('mousedown', e => {
+        const vp = document.getElementById('minimapViewport');
+        if (!vp || e.target !== vp) return;
+        e.preventDefault();
+        e.stopPropagation();
+        dragging = true;
+        startMX = e.clientX;
+        startMY = e.clientY;
+        startPanX = panX;
+        startPanY = panY;
+    });
+
+    document.addEventListener('mousemove', e => {
+        if (!dragging) return;
+        const mc = document.getElementById('minimapCanvas');
+        if (!mc || !window._CANVAS_W) return;
+        const scaleX = mc.width / window._CANVAS_W;
+        const scaleY = mc.height / window._CANVAS_H;
+        const scale = Math.min(scaleX, scaleY);
+        // Convert minimap pixel delta to canvas coordinate delta
+        // Minimap is displayed at CSS size = mc.parentElement size; canvas is at mc.width logical px
+        const mm = document.getElementById('minimap');
+        const cssScale = mm.clientWidth / mc.width;
+        const dx = (e.clientX - startMX) / (scale * cssScale);
+        const dy = (e.clientY - startMY) / (scale * cssScale);
+        panX = startPanX - dx;
+        panY = startPanY - dy;
+        applyTransform();
+    });
+
+    document.addEventListener('mouseup', () => {
+        dragging = false;
+    });
+})();
 
 // --- Download PNG ---
 function downloadPNG() {
