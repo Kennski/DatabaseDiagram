@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Database Diagram Tool</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.container {
+    max-width: 680px;
+    width: 100%;
+    padding: 32px;
+}
+
+.logo {
+    text-align: center;
+    margin-bottom: 40px;
+}
+.logo-icon {
+    width: 72px;
+    height: 72px;
+    margin: 0 auto 16px;
+    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.logo-icon svg { width: 40px; height: 40px; fill: #fff; }
+.logo h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #f8fafc;
+    margin-bottom: 6px;
+}
+.logo p {
+    font-size: 14px;
+    color: #94a3b8;
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 24px;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #334155;
+}
+.tab {
+    flex: 1;
+    padding: 12px 16px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    background: #1e293b;
+    color: #94a3b8;
+    border: none;
+    transition: all 0.2s;
+}
+.tab:hover { color: #e2e8f0; background: #263548; }
+.tab.active {
+    background: #2563eb;
+    color: #fff;
+}
+.tab + .tab { border-left: 1px solid #334155; }
+
+/* Panels */
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* Card */
+.card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 28px;
+}
+
+/* Form */
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.form-row.full { grid-template-columns: 1fr; }
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.form-group label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.form-group input, .form-group select {
+    background: #0f172a;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #e2e8f0;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s;
+}
+.form-group input:focus, .form-group select:focus {
+    border-color: #3b82f6;
+}
+.form-group input::placeholder { color: #475569; }
+
+.submit-btn {
+    width: 100%;
+    padding: 14px 24px;
+    background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+    border: none;
+    border-radius: 10px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: opacity 0.2s, transform 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+.submit-btn:hover { opacity: 0.92; }
+.submit-btn:active { transform: scale(0.99); }
+.submit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.submit-btn svg { width: 18px; height: 18px; fill: currentColor; }
+
+/* SQL Upload */
+.upload-area {
+    border: 2px dashed #475569;
+    border-radius: 12px;
+    padding: 40px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    margin-bottom: 16px;
+}
+.upload-area:hover { border-color: #3b82f6; background: rgba(37, 99, 235, 0.05); }
+.upload-area.dragging { border-color: #3b82f6; background: rgba(37, 99, 235, 0.1); }
+.upload-area.has-file { border-color: #22c55e; background: rgba(34, 197, 94, 0.05); }
+.upload-area svg { width: 48px; height: 48px; fill: #475569; margin-bottom: 12px; }
+.upload-area.has-file svg { fill: #22c55e; }
+.upload-area p { font-size: 14px; color: #94a3b8; }
+.upload-area .filename { font-size: 14px; color: #22c55e; font-weight: 600; margin-top: 4px; }
+.upload-area input[type="file"] {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+/* Or separator */
+.or-sep {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 16px 0;
+    color: #64748b;
+    font-size: 13px;
+}
+.or-sep::before, .or-sep::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #334155;
+}
+
+/* SQL Paste */
+.sql-paste textarea {
+    width: 100%;
+    height: 160px;
+    background: #0f172a;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    padding: 12px 14px;
+    color: #e2e8f0;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.15s;
+}
+.sql-paste textarea:focus { border-color: #3b82f6; }
+.sql-paste textarea::placeholder { color: #475569; }
+
+/* Error */
+.error-msg {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: #fca5a5;
+    font-size: 13px;
+    margin-top: 12px;
+    display: none;
+}
+.error-msg.visible { display: block; }
+
+/* Loading */
+.loading-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+}
+.loading-overlay.visible { display: flex; }
+.spinner {
+    width: 48px;
+    height: 48px;
+    border: 3px solid #334155;
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-size: 14px; color: #94a3b8; }
+
+/* Footer links */
+.footer-links {
+    text-align: center;
+    margin-top: 24px;
+}
+.footer-links a {
+    color: #64748b;
+    text-decoration: none;
+    font-size: 13px;
+    margin: 0 12px;
+}
+.footer-links a:hover { color: #38bdf8; }
+
+/* Recent connections */
+.recent-section {
+    margin-top: 24px;
+}
+.recent-section h3 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    margin-bottom: 10px;
+}
+.recent-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.recent-item:hover { border-color: #3b82f6; }
+.recent-item .info { font-size: 13px; color: #e2e8f0; }
+.recent-item .info span { color: #64748b; }
+.recent-item .remove {
+    background: none;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    padding: 4px;
+    font-size: 16px;
+    line-height: 1;
+}
+.recent-item .remove:hover { color: #ef4444; }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <div class="logo">
+        <div class="logo-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 4.69 2 8v8c0 3.31 4.48 6 10 6s10-2.69 10-6V8c0-3.31-4.48-6-10-6zm0 2c4.42 0 8 1.79 8 4s-3.58 4-8 4-8-1.79-8-4 3.58-4 8-4zm8 12c0 2.21-3.58 4-8 4s-8-1.79-8-4v-2.54C5.82 14.4 8.74 15 12 15s6.18-.6 8-1.54V16zm0-4c0 2.21-3.58 4-8 4s-8-1.79-8-4V9.46C5.82 10.4 8.74 11 12 11s6.18-.6 8-1.54V12z"/></svg>
+        </div>
+        <h1>Database Diagram Tool</h1>
+        <p>Connect to any MySQL / MariaDB database or upload a SQL dump to generate interactive diagrams</p>
+    </div>
+
+    <div class="tabs">
+        <button class="tab active" data-tab="connect">Live Connection</button>
+        <button class="tab" data-tab="upload">SQL File / Paste</button>
+    </div>
+
+    <!-- Live Connection Panel -->
+    <div id="panel-connect" class="panel active">
+        <div class="card">
+            <form id="connect-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Host</label>
+                        <input type="text" id="db-host" placeholder="localhost" value="localhost" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Port</label>
+                        <input type="number" id="db-port" placeholder="3306" value="3306">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="db-user" placeholder="root" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="db-password" placeholder="••••••••">
+                    </div>
+                </div>
+                <div class="form-row full">
+                    <div class="form-group">
+                        <label>Database Name</label>
+                        <input type="text" id="db-name" placeholder="my_database" required>
+                    </div>
+                </div>
+                <button type="submit" class="submit-btn" id="connect-btn">
+                    <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 4.69 2 8v8c0 3.31 4.48 6 10 6s10-2.69 10-6V8c0-3.31-4.48-6-10-6zm0 2c4.42 0 8 1.79 8 4s-3.58 4-8 4-8-1.79-8-4 3.58-4 8-4zM4 16v-2.54C5.82 14.4 8.74 15 12 15s6.18-.6 8-1.54V16c0 2.21-3.58 4-8 4s-8-1.79-8-4z"/></svg>
+                    Connect &amp; Generate Diagrams
+                </button>
+            </form>
+            <div id="connect-error" class="error-msg"></div>
+
+            <div class="recent-section" id="recent-section" style="display:none;">
+                <h3>Recent Connections</h3>
+                <div id="recent-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SQL File / Paste Panel -->
+    <div id="panel-upload" class="panel">
+        <div class="card">
+            <div class="upload-area" id="upload-area">
+                <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM6 20V4h5v7h7v9H6z"/></svg>
+                <p>Click or drag a <strong>.sql</strong> file here</p>
+                <div class="filename" id="file-name"></div>
+                <input type="file" id="sql-file" accept=".sql,.txt">
+            </div>
+
+            <div class="or-sep">or paste SQL below</div>
+
+            <div class="sql-paste">
+                <textarea id="sql-paste" placeholder="Paste your CREATE TABLE statements here..."></textarea>
+            </div>
+
+            <button type="button" class="submit-btn" id="parse-btn">
+                <svg viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+                Parse SQL &amp; Generate Diagrams
+            </button>
+            <div id="parse-error" class="error-msg"></div>
+        </div>
+    </div>
+
+    <div class="footer-links">
+        <a href="/database_diagram.html">View ALDCIS Table List</a>
+        <a href="/visual_diagram.html">View ALDCIS Visual Diagram</a>
+    </div>
+</div>
+
+<div class="loading-overlay" id="loading">
+    <div class="spinner"></div>
+    <div class="loading-text" id="loading-text">Connecting to database...</div>
+</div>
+
+<script>
+// Tab switching
+document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+    });
+});
+
+// File upload
+const uploadArea = document.getElementById('upload-area');
+const fileInput = document.getElementById('sql-file');
+const fileName = document.getElementById('file-name');
+let uploadedSQL = '';
+
+fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+        fileName.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+        uploadArea.classList.add('has-file');
+        const reader = new FileReader();
+        reader.onload = (ev) => { uploadedSQL = ev.target.result; };
+        reader.readAsText(file);
+    }
+});
+
+uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragging'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragging'));
+uploadArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadArea.classList.remove('dragging');
+    const file = e.dataTransfer.files[0];
+    if (file) {
+        fileInput.files = e.dataTransfer.files;
+        fileInput.dispatchEvent(new Event('change'));
+    }
+});
+
+// Recent connections (localStorage)
+function loadRecent() {
+    const items = JSON.parse(localStorage.getItem('dbdiagram_recent') || '[]');
+    const section = document.getElementById('recent-section');
+    const list = document.getElementById('recent-list');
+    if (items.length === 0) { section.style.display = 'none'; return; }
+    section.style.display = 'block';
+    list.innerHTML = '';
+    items.forEach((item, i) => {
+        const div = document.createElement('div');
+        div.className = 'recent-item';
+        div.innerHTML = `<div class="info">${item.user}@${item.host}:${item.port} <span>/ ${item.database}</span></div><button class="remove" data-idx="${i}">&times;</button>`;
+        div.addEventListener('click', (e) => {
+            if (e.target.classList.contains('remove')) {
+                items.splice(parseInt(e.target.dataset.idx), 1);
+                localStorage.setItem('dbdiagram_recent', JSON.stringify(items));
+                loadRecent();
+                return;
+            }
+            document.getElementById('db-host').value = item.host;
+            document.getElementById('db-port').value = item.port;
+            document.getElementById('db-user').value = item.user;
+            document.getElementById('db-password').value = '';
+            document.getElementById('db-name').value = item.database;
+        });
+        list.appendChild(div);
+    });
+}
+loadRecent();
+
+function saveRecent(conn) {
+    let items = JSON.parse(localStorage.getItem('dbdiagram_recent') || '[]');
+    // Remove duplicate
+    items = items.filter(i => !(i.host === conn.host && i.port === conn.port && i.user === conn.user && i.database === conn.database));
+    items.unshift(conn);
+    if (items.length > 5) items = items.slice(0, 5);
+    localStorage.setItem('dbdiagram_recent', JSON.stringify(items));
+}
+
+// Show/hide loading
+function showLoading(text) {
+    document.getElementById('loading-text').textContent = text;
+    document.getElementById('loading').classList.add('visible');
+}
+function hideLoading() {
+    document.getElementById('loading').classList.remove('visible');
+}
+
+// Store schema in sessionStorage and navigate
+function goToDiagram(data) {
+    sessionStorage.setItem('dbdiagram_data', JSON.stringify(data));
+    // Navigate to the dynamic list page
+    window.location.href = '/dynamic-list.html';
+}
+
+// Live connection form
+document.getElementById('connect-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('connect-error');
+    errEl.classList.remove('visible');
+
+    const conn = {
+        host: document.getElementById('db-host').value.trim(),
+        port: parseInt(document.getElementById('db-port').value) || 3306,
+        user: document.getElementById('db-user').value.trim(),
+        password: document.getElementById('db-password').value,
+        database: document.getElementById('db-name').value.trim()
+    };
+
+    if (!conn.host || !conn.user || !conn.database) {
+        errEl.textContent = 'Please fill in all required fields.';
+        errEl.classList.add('visible');
+        return;
+    }
+
+    showLoading('Connecting to ' + conn.host + ':' + conn.port + '...');
+    try {
+        const res = await fetch('/api/schema', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(conn)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Connection failed');
+
+        hideLoading();
+        saveRecent({ host: conn.host, port: conn.port, user: conn.user, database: conn.database });
+        loadRecent();
+        goToDiagram(data);
+    } catch (err) {
+        hideLoading();
+        errEl.textContent = err.message;
+        errEl.classList.add('visible');
+    }
+});
+
+// SQL parse
+document.getElementById('parse-btn').addEventListener('click', async () => {
+    const errEl = document.getElementById('parse-error');
+    errEl.classList.remove('visible');
+
+    const sql = uploadedSQL || document.getElementById('sql-paste').value.trim();
+    if (!sql) {
+        errEl.textContent = 'Please upload a SQL file or paste SQL content.';
+        errEl.classList.add('visible');
+        return;
+    }
+
+    showLoading('Parsing SQL dump...');
+    try {
+        const res = await fetch('/api/schema-from-sql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sql })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Parse failed');
+        if (data.tableCount === 0) throw new Error('No CREATE TABLE statements found in the SQL.');
+
+        hideLoading();
+        goToDiagram(data);
+    } catch (err) {
+        hideLoading();
+        errEl.textContent = err.message;
+        errEl.classList.add('visible');
+    }
+});
+</script>
+</body>
+</html>

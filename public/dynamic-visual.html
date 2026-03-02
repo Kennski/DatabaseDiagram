@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Database Diagram — Visual</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+}
+
+.toolbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 1000;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid #334155;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.toolbar h1 {
+    font-size: 16px;
+    font-weight: 700;
+    color: #f8fafc;
+    margin-right: 8px;
+    white-space: nowrap;
+}
+.toolbar .sep {
+    width: 1px;
+    height: 24px;
+    background: #334155;
+}
+.btn {
+    background: #1e293b;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    padding: 6px 14px;
+    color: #cbd5e1;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.btn:hover { border-color: #38bdf8; color: #38bdf8; }
+.btn.primary { background: #2563eb; border-color: #3b82f6; color: #fff; }
+.btn.primary:hover { background: #1d4ed8; }
+.btn svg { width: 14px; height: 14px; fill: currentColor; }
+
+.zoom-info {
+    font-size: 12px;
+    color: #64748b;
+    min-width: 45px;
+    text-align: center;
+}
+.nav-link {
+    color: #38bdf8;
+    text-decoration: none;
+    font-size: 12px;
+}
+.nav-link:hover { text-decoration: underline; }
+
+.canvas-wrapper {
+    position: fixed;
+    top: 50px;
+    left: 0; right: 0; bottom: 0;
+    overflow: hidden;
+    cursor: grab;
+    background:
+        radial-gradient(circle at 50% 50%, rgba(30,41,59,1) 0%, rgba(15,23,42,1) 100%);
+}
+.canvas-wrapper:active { cursor: grabbing; }
+.canvas-wrapper.dragging-table { cursor: default; }
+
+.canvas {
+    position: absolute;
+    transform-origin: 0 0;
+}
+
+.grid-bg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    background-image:
+        linear-gradient(rgba(51,65,85,0.3) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(51,65,85,0.3) 1px, transparent 1px);
+    background-size: 40px 40px;
+}
+
+.arrows-svg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+}
+.arrows-svg path {
+    fill: none;
+    stroke-width: 1.5;
+    opacity: 0.5;
+    transition: opacity 0.2s, stroke-width 0.2s;
+}
+.arrows-svg path.highlighted {
+    opacity: 1;
+    stroke-width: 2.5;
+}
+
+.cat-label {
+    position: absolute;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    opacity: 0.4;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.tbl {
+    position: absolute;
+    border-radius: 8px;
+    border: 2px solid;
+    overflow: hidden;
+    cursor: move;
+    user-select: none;
+    transition: box-shadow 0.15s;
+    font-size: 11px;
+}
+.tbl:hover {
+    z-index: 50 !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.tbl.selected {
+    z-index: 100 !important;
+    box-shadow: 0 0 0 3px rgba(56,189,248,0.5), 0 8px 32px rgba(0,0,0,0.5);
+}
+.tbl-header {
+    padding: 6px 10px;
+    font-weight: 700;
+    font-size: 12px;
+    color: #fff;
+    letter-spacing: 0.3px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.tbl-header .tbl-icon { font-size: 10px; opacity: 0.7; }
+.tbl-cols {
+    padding: 2px 0;
+}
+.tbl-col {
+    display: flex;
+    align-items: center;
+    padding: 1px 10px;
+    gap: 5px;
+    line-height: 18px;
+    height: 18px;
+}
+.tbl-col:hover { filter: brightness(0.95); }
+.col-pk { font-weight: 700; }
+.col-pk::before { content: '🔑 '; font-size: 9px; }
+.col-fk { font-style: italic; }
+.col-fk::before { content: '🔗 '; font-size: 9px; }
+.col-type {
+    margin-left: auto;
+    font-size: 9px;
+    opacity: 0.6;
+    white-space: nowrap;
+}
+
+.legend {
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    background: rgba(15, 23, 42, 0.92);
+    backdrop-filter: blur(8px);
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px 16px;
+    z-index: 999;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    font-size: 11px;
+}
+.legend h3 {
+    font-size: 12px;
+    color: #94a3b8;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+    cursor: pointer;
+}
+.legend-item:hover { color: #fff; }
+.legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+.legend-count {
+    color: #475569;
+    font-size: 10px;
+    margin-left: auto;
+}
+
+.minimap {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    width: 220px;
+    height: 160px;
+    background: rgba(15, 23, 42, 0.92);
+    backdrop-filter: blur(8px);
+    border: 1px solid #334155;
+    border-radius: 10px;
+    z-index: 999;
+    overflow: hidden;
+    cursor: crosshair;
+}
+.minimap canvas { width: 100%; height: 100%; }
+.minimap-viewport {
+    position: absolute;
+    border: 1.5px solid #38bdf8;
+    background: rgba(56, 189, 248, 0.08);
+    pointer-events: none;
+}
+
+.toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #1e293b;
+    border: 1px solid #334155;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #e2e8f0;
+    z-index: 9999;
+    transition: transform 0.3s ease;
+    pointer-events: none;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+.no-data {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    flex-direction: column;
+    gap: 16px;
+    color: #64748b;
+}
+.no-data a {
+    color: #38bdf8;
+    text-decoration: none;
+}
+.no-data a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+const BOX_W = 220;
+const COL_H = 18;
+const HEADER_H = 30;
+const PAD = 8;
+
+function esc(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escXml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// --- Auto-categorization engine (same as list view) ---
+function autoCategorize(schema) {
+    const tableNames = Object.keys(schema);
+    const rules = [
+        { name: 'Identity & Auth', patterns: [/^aspnet/i, /^role/i, /^user(claim|login|role|token)/i, /identity/i, /auth/i, /permission/i, /claim/i] },
+        { name: 'Hangfire (Job Queue)', patterns: [/^hangfire/i] },
+        { name: 'Legacy Job Queue', patterns: [/^(job|jobparameter|jobqueue|jobstate|state|counter|aggregatedcounter|distributedlock|hash|list|server|set)$/i] },
+        { name: 'System', patterns: [/^__ef/i, /^migration/i, /^schema_version/i, /^sysdiagram/i] },
+        { name: 'Audit & Logs', patterns: [/audit/i, /^log/i, /log$/i, /history$/i, /changelog/i, /tracking/i] },
+    ];
+
+    const assigned = {};
+    const unassigned = [];
+
+    for (const t of tableNames) {
+        let found = false;
+        for (const rule of rules) {
+            if (rule.patterns.some(p => p.test(t))) {
+                assigned[t] = rule.name;
+                found = true;
+                break;
+            }
+        }
+        if (!found) unassigned.push(t);
+    }
+
+    function getPrefix(name) {
+        if (name.includes('_')) return name.split('_')[0].toLowerCase();
+        const parts = name.replace(/([a-z])([A-Z])/g, '$1_$2').split('_');
+        return parts[0].toLowerCase();
+    }
+
+    const prefixGroups = {};
+    for (const t of unassigned) {
+        const prefix = getPrefix(t);
+        if (!prefixGroups[prefix]) prefixGroups[prefix] = [];
+        prefixGroups[prefix].push(t);
+    }
+
+    const palette = [
+        { bg: '#dbeafe', border: '#3b82f6', header: '#2563eb', text: '#1e3a5f' },
+        { bg: '#dcfce7', border: '#22c55e', header: '#16a34a', text: '#14532d' },
+        { bg: '#fef3c7', border: '#f59e0b', header: '#d97706', text: '#78350f' },
+        { bg: '#fee2e2', border: '#ef4444', header: '#dc2626', text: '#7f1d1d' },
+        { bg: '#e0e7ff', border: '#6366f1', header: '#4f46e5', text: '#312e81' },
+        { bg: '#fce7f3', border: '#ec4899', header: '#db2777', text: '#831843' },
+        { bg: '#ccfbf1', border: '#14b8a6', header: '#0d9488', text: '#134e4a' },
+        { bg: '#f3e8ff', border: '#a855f7', header: '#9333ea', text: '#581c87' },
+        { bg: '#fff7ed', border: '#f97316', header: '#ea580c', text: '#7c2d12' },
+        { bg: '#f1f5f9', border: '#94a3b8', header: '#64748b', text: '#1e293b' },
+        { bg: '#ecfdf5', border: '#10b981', header: '#059669', text: '#064e3b' },
+        { bg: '#fef2f2', border: '#f87171', header: '#ef4444', text: '#7f1d1d' },
+        { bg: '#eff6ff', border: '#60a5fa', header: '#3b82f6', text: '#1e3a5f' },
+        { bg: '#fdf4ff', border: '#c084fc', header: '#a855f7', text: '#581c87' },
+        { bg: '#f0fdfa', border: '#2dd4bf', header: '#14b8a6', text: '#134e4a' },
+    ];
+
+    const fixedColors = {
+        'Identity & Auth': { bg: '#fce7f3', border: '#ec4899', header: '#db2777', text: '#831843' },
+        'Hangfire (Job Queue)': { bg: '#fff7ed', border: '#f97316', header: '#ea580c', text: '#7c2d12' },
+        'Legacy Job Queue': { bg: '#f1f5f9', border: '#94a3b8', header: '#64748b', text: '#1e293b' },
+        'System': { bg: '#f5f5f5', border: '#a3a3a3', header: '#737373', text: '#262626' },
+        'Audit & Logs': { bg: '#f3e8ff', border: '#a855f7', header: '#9333ea', text: '#581c87' },
+    };
+
+    const categories = {};
+    const catColors = {};
+
+    for (const rule of rules) {
+        const tables = tableNames.filter(t => assigned[t] === rule.name);
+        if (tables.length > 0) {
+            categories[rule.name] = tables;
+            catColors[rule.name] = fixedColors[rule.name] || palette[Object.keys(categories).length % palette.length];
+        }
+    }
+
+    const largeGroups = Object.entries(prefixGroups).filter(([, ts]) => ts.length >= 2).sort((a, b) => b[1].length - a[1].length);
+
+    for (const [prefix, tables] of largeGroups) {
+        const catName = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+        if (!categories[catName]) {
+            categories[catName] = tables;
+            catColors[catName] = palette[Object.keys(categories).length % palette.length];
+        } else {
+            categories[catName].push(...tables);
+        }
+        tables.forEach(t => assigned[t] = catName);
+    }
+
+    const soloTables = unassigned.filter(t => !assigned[t]);
+    if (soloTables.length > 0) {
+        categories['Other'] = soloTables;
+        catColors['Other'] = { bg: '#f5f5f5', border: '#a3a3a3', header: '#737373', text: '#262626' };
+    }
+
+    const tableCat = {};
+    for (const [cat, tables] of Object.entries(categories)) {
+        for (const t of tables) tableCat[t] = cat;
+    }
+    for (const t of tableNames) {
+        if (!tableCat[t]) {
+            tableCat[t] = 'Other';
+            if (!categories['Other']) { categories['Other'] = []; catColors['Other'] = { bg: '#f5f5f5', border: '#a3a3a3', header: '#737373', text: '#262626' }; }
+            categories['Other'].push(t);
+        }
+    }
+
+    return { categories, catColors, tableCat };
+}
+
+// --- Main render ---
+function render() {
+    const raw = sessionStorage.getItem('dbdiagram_data');
+    if (!raw) {
+        document.getElementById('app').innerHTML = `
+            <div class="no-data">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="#475569"><path d="M12 2C6.48 2 2 4.69 2 8v8c0 3.31 4.48 6 10 6s10-2.69 10-6V8c0-3.31-4.48-6-10-6zm0 2c4.42 0 8 1.79 8 4s-3.58 4-8 4-8-1.79-8-4 3.58-4 8-4zm8 12c0 2.21-3.58 4-8 4s-8-1.79-8-4v-2.54C5.82 14.4 8.74 15 12 15s6.18-.6 8-1.54V16z"/></svg>
+                <p>No schema data loaded.</p>
+                <a href="/">← Go to Connection Form</a>
+            </div>`;
+        return;
+    }
+
+    const data = JSON.parse(raw);
+    const schema = data.schema;
+    const dbName = data.database || 'Database';
+
+    // Collect relationships
+    const relationships = [];
+    for (const [tbl, def] of Object.entries(schema)) {
+        for (const fk of def.foreign_keys) {
+            relationships.push({
+                from: tbl,
+                fromCols: fk.columns,
+                to: fk.ref_table,
+                toCols: fk.ref_columns,
+                actions: fk.actions
+            });
+        }
+    }
+
+    // Try to use categories from list view, otherwise auto-categorize
+    let categories, catColors, tableCat;
+    const savedCats = sessionStorage.getItem('dbdiagram_categories');
+    if (savedCats) {
+        const parsed = JSON.parse(savedCats);
+        categories = parsed.categories;
+        catColors = parsed.categoryColors || parsed.catColors;
+        tableCat = parsed.tableCategory || parsed.tableCat;
+        // Ensure catColors have the 'text' property needed for visual view
+        for (const [cat, color] of Object.entries(catColors)) {
+            if (!color.text) {
+                color.text = color.headerText === '#fff' ? '#1e293b' : color.headerText;
+            }
+        }
+    } else {
+        const result = autoCategorize(schema);
+        categories = result.categories;
+        catColors = result.catColors;
+        tableCat = result.tableCat;
+    }
+
+    // Compute table box sizes
+    const tableBoxes = {};
+    for (const [name, def] of Object.entries(schema)) {
+        const h = HEADER_H + def.columns.length * COL_H + PAD;
+        tableBoxes[name] = { w: BOX_W, h, x: 0, y: 0, cat: tableCat[name] || 'Other' };
+    }
+
+    // Layout: arrange categories in a grid
+    const catKeys = Object.keys(categories);
+    const gridCols = Math.ceil(Math.sqrt(catKeys.length));
+    const regionSpacingX = 800;
+    const regionSpacingY = 900;
+
+    const catLayout = catKeys.map((cat, i) => ({
+        cat,
+        cx: 600 + (i % gridCols) * regionSpacingX,
+        cy: 600 + Math.floor(i / gridCols) * regionSpacingY
+    }));
+
+    for (const region of catLayout) {
+        const tablesInCat = Object.entries(tableBoxes).filter(([n, b]) => b.cat === region.cat);
+        if (tablesInCat.length === 0) continue;
+
+        const cols = Math.ceil(Math.sqrt(tablesInCat.length));
+        const gapX = BOX_W + 40;
+        const totalW = cols * gapX;
+        let col = 0, curY = 0, rowMaxH = 0;
+        const startX = region.cx - totalW / 2;
+
+        for (const [name, box] of tablesInCat) {
+            box.x = startX + col * gapX;
+            box.y = region.cy + curY;
+            rowMaxH = Math.max(rowMaxH, box.h);
+            col++;
+            if (col >= cols) {
+                col = 0;
+                curY += rowMaxH + 30;
+                rowMaxH = 0;
+            }
+        }
+    }
+
+    // Compute canvas size
+    let maxX = 0, maxY = 0;
+    for (const box of Object.values(tableBoxes)) {
+        maxX = Math.max(maxX, box.x + box.w + 100);
+        maxY = Math.max(maxY, box.y + box.h + 100);
+    }
+    const canvasW = Math.max(maxX, 3200);
+    const canvasH = Math.max(maxY, 2800);
+
+    // Build HTML
+    let html = `
+    <div class="toolbar">
+        <h1>📊 ${esc(dbName)} — Visual Diagram</h1>
+        <div class="sep"></div>
+        <a href="/dynamic-list.html" class="nav-link">← Table List View</a>
+        <a href="/" class="nav-link" style="margin-left:4px">← New Connection</a>
+        <div class="sep"></div>
+        <button class="btn" onclick="zoomIn()">
+            <svg viewBox="0 0 16 16"><path d="M8 3.5a.5.5 0 0 1 .5.5v3.5H12a.5.5 0 0 1 0 1H8.5V12a.5.5 0 0 1-1 0V8.5H4a.5.5 0 0 1 0-1h3.5V4a.5.5 0 0 1 .5-.5z"/></svg>
+            Zoom In
+        </button>
+        <span class="zoom-info" id="zoomLevel">100%</span>
+        <button class="btn" onclick="zoomOut()">
+            <svg viewBox="0 0 16 16"><path d="M4 8a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7A.5.5 0 0 1 4 8z"/></svg>
+            Zoom Out
+        </button>
+        <button class="btn" onclick="zoomFit()">Fit All</button>
+        <button class="btn" onclick="resetLayout()">Reset Layout</button>
+        <div class="sep"></div>
+        <button class="btn primary" onclick="downloadPNG()">
+            <svg viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
+            Download PNG
+        </button>
+        <button class="btn primary" onclick="downloadSVG()">
+            <svg viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
+            Download SVG
+        </button>
+    </div>
+
+    <div class="canvas-wrapper" id="canvasWrapper">
+        <div class="canvas" id="canvas" style="width:${canvasW}px;height:${canvasH}px">
+            <div class="grid-bg"></div>
+            <svg class="arrows-svg" id="arrowsSvg">
+                <defs>`;
+
+    // Arrow markers
+    const usedColors = new Set();
+    for (const r of relationships) {
+        const col = catColors[tableCat[r.from]]?.border || '#94a3b8';
+        usedColors.add(col);
+    }
+    for (const col of usedColors) {
+        const id = col.replace('#', 'arrow_');
+        html += `<marker id="${id}" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse" fill="${col}">
+                        <path d="M 0 0 L 10 3.5 L 0 7 z"/>
+                    </marker>`;
+    }
+
+    html += `</defs>`;
+
+    // Arrow paths
+    for (let i = 0; i < relationships.length; i++) {
+        const r = relationships[i];
+        const col = catColors[tableCat[r.from]]?.border || '#94a3b8';
+        const markerId = col.replace('#', 'arrow_');
+        html += `<path id="rel-${i}" data-from="${esc(r.from)}" data-to="${esc(r.to)}" stroke="${col}" marker-end="url(#${markerId})" />`;
+    }
+
+    html += `</svg>`;
+
+    // Category labels
+    for (const region of catLayout) {
+        const tablesInCat = Object.keys(tableBoxes).filter(n => tableBoxes[n].cat === region.cat);
+        if (tablesInCat.length === 0) continue;
+        let minY = Infinity;
+        for (const t of tablesInCat) minY = Math.min(minY, tableBoxes[t].y);
+        const col = catColors[region.cat];
+        if (col) {
+            html += `<div class="cat-label" style="left:${region.cx - 100}px; top:${minY - 30}px; color:${col.header}">${esc(region.cat)}</div>`;
+        }
+    }
+
+    // Table boxes
+    for (const [name, box] of Object.entries(tableBoxes)) {
+        const def = schema[name];
+        const col = catColors[box.cat] || catColors['Other'] || { bg: '#f5f5f5', border: '#a3a3a3', header: '#737373', text: '#262626' };
+
+        html += `<div class="tbl" id="tbl-${esc(name)}" data-name="${esc(name)}"
+                 style="left:${box.x}px; top:${box.y}px; width:${box.w}px;
+                        background:${col.bg}; border-color:${col.border}"
+                 onmousedown="startDrag(event, '${esc(name)}')"
+                 onmouseenter="highlightRelated('${esc(name)}')"
+                 onmouseleave="unhighlightAll()">
+            <div class="tbl-header" style="background:${col.header}">
+                <span class="tbl-icon">⊞</span>
+                <span>${esc(name)}</span>
+            </div>
+            <div class="tbl-cols">`;
+
+        for (const c of def.columns) {
+            const isPk = def.primary_keys.includes(c.name);
+            const isFk = def.foreign_keys.some(f => f.columns.includes(c.name));
+            let cls = '';
+            if (isPk) cls = 'col-pk';
+            else if (isFk) cls = 'col-fk';
+            const shortT = c.type.replace('longtext', 'text').replace(/datetime\(\d+\)/, 'datetime');
+
+            html += `<div class="tbl-col ${cls}" style="color:${col.text}">
+                    <span>${esc(c.name)}</span>
+                    <span class="col-type">${esc(shortT)}</span>
+                </div>`;
+        }
+
+        html += `</div></div>`;
+    }
+
+    html += `</div></div>`;
+
+    // Legend
+    html += `<div class="legend" id="legend"><h3>Categories</h3>`;
+    for (const [cat, tables] of Object.entries(categories)) {
+        const col = catColors[cat];
+        if (!col) continue;
+        const count = tables.filter(t => schema[t]).length;
+        if (count === 0) continue;
+        html += `<div class="legend-item" onclick="focusCategory('${esc(cat)}')">
+            <div class="legend-dot" style="background:${col.header}"></div>
+            <span>${esc(cat)}</span>
+            <span class="legend-count">${count}</span>
+        </div>`;
+    }
+    html += `<hr style="border-color:#334155; margin:8px 0">
+        <div style="color:#64748b; font-size:10px;">
+            🔑 Primary Key &nbsp; 🔗 Foreign Key<br>
+            Drag tables to rearrange<br>
+            Scroll to zoom · Drag canvas to pan
+        </div>
+    </div>`;
+
+    // Minimap
+    html += `<div class="minimap" id="minimap" onmousedown="minimapNav(event)">
+        <canvas id="minimapCanvas" width="220" height="160"></canvas>
+        <div class="minimap-viewport" id="minimapViewport"></div>
+    </div>`;
+
+    // Toast
+    html += `<div class="toast" id="toast"></div>`;
+
+    document.getElementById('app').innerHTML = html;
+
+    // --- Set up interactivity ---
+    window._CANVAS_W = canvasW;
+    window._CANVAS_H = canvasH;
+    window._tablePos = {};
+    window._origPos = {};
+    window._relationships = relationships;
+    window._catColors = catColors;
+    window._tableCat = tableCat;
+    window._schema = {};
+    window._dbName = dbName;
+
+    for (const [name, box] of Object.entries(tableBoxes)) {
+        window._tablePos[name] = { x: box.x, y: box.y, w: box.w, h: box.h };
+        window._origPos[name] = { x: box.x, y: box.y, w: box.w, h: box.h };
+    }
+
+    for (const [name, def] of Object.entries(schema)) {
+        window._schema[name] = {
+            columns: def.columns.map(c => ({ name: c.name, type: c.type })),
+            primary_keys: def.primary_keys,
+            foreign_keys: def.foreign_keys.map(f => ({ columns: f.columns }))
+        };
+    }
+
+    updateArrows();
+    zoomFit();
+}
+
+// --- State ---
+let zoom = 0.45;
+let panX = -200;
+let panY = -100;
+let isPanning = false;
+let panStartX, panStartY;
+let isDraggingTable = false;
+let dragTarget = null;
+let dragOffX = 0, dragOffY = 0;
+
+// --- Transform ---
+function applyTransform() {
+    const canvas = document.getElementById('canvas');
+    if (!canvas) return;
+    canvas.style.transform = `scale(${zoom}) translate(${panX}px, ${panY}px)`;
+    document.getElementById('zoomLevel').textContent = Math.round(zoom * 100) + '%';
+    updateMinimap();
+}
+
+// --- Pan & zoom setup ---
+document.addEventListener('mousedown', e => {
+    const wrapper = document.getElementById('canvasWrapper');
+    if (!wrapper || !wrapper.contains(e.target)) return;
+    if (isDraggingTable) return;
+    if (e.target.closest('.tbl')) return;
+    isPanning = true;
+    panStartX = e.clientX;
+    panStartY = e.clientY;
+});
+
+document.addEventListener('mousemove', e => {
+    if (isPanning) {
+        panX += (e.clientX - panStartX) / zoom;
+        panY += (e.clientY - panStartY) / zoom;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+        applyTransform();
+    }
+    if (isDraggingTable && dragTarget && window._tablePos[dragTarget]) {
+        const nx = (e.clientX - dragOffX) / zoom - panX;
+        const ny = (e.clientY - dragOffY - 50) / zoom - panY;
+        window._tablePos[dragTarget].x = Math.round(nx);
+        window._tablePos[dragTarget].y = Math.round(ny);
+        const el = document.getElementById('tbl-' + dragTarget);
+        if (el) {
+            el.style.left = window._tablePos[dragTarget].x + 'px';
+            el.style.top = window._tablePos[dragTarget].y + 'px';
+        }
+        updateArrows();
+        updateMinimap();
+    }
+});
+
+document.addEventListener('mouseup', () => {
+    isPanning = false;
+    if (isDraggingTable) {
+        isDraggingTable = false;
+        const wrapper = document.getElementById('canvasWrapper');
+        if (wrapper) wrapper.classList.remove('dragging-table');
+        if (dragTarget) {
+            const el = document.getElementById('tbl-' + dragTarget);
+            if (el) el.classList.remove('selected');
+        }
+        dragTarget = null;
+    }
+});
+
+document.addEventListener('wheel', e => {
+    const wrapper = document.getElementById('canvasWrapper');
+    if (!wrapper || !wrapper.contains(e.target)) return;
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoom = Math.max(0.1, Math.min(2, zoom * delta));
+
+    const rect = wrapper.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    panX -= mx / newZoom - mx / zoom;
+    panY -= (my - 50) / newZoom - (my - 50) / zoom;
+
+    zoom = newZoom;
+    applyTransform();
+}, { passive: false });
+
+function zoomIn() { zoom = Math.min(2, zoom * 1.2); applyTransform(); }
+function zoomOut() { zoom = Math.max(0.1, zoom * 0.8); applyTransform(); }
+function zoomFit() {
+    const wrapper = document.getElementById('canvasWrapper');
+    if (!wrapper || !window._CANVAS_W) return;
+    const wW = wrapper.clientWidth;
+    const wH = wrapper.clientHeight;
+    zoom = Math.min(wW / window._CANVAS_W, wH / window._CANVAS_H) * 0.9;
+    panX = (wW / zoom - window._CANVAS_W) / 2;
+    panY = (wH / zoom - window._CANVAS_H) / 2;
+    applyTransform();
+}
+
+// --- Table drag ---
+function startDrag(e, name) {
+    e.stopPropagation();
+    isDraggingTable = true;
+    dragTarget = name;
+    const wrapper = document.getElementById('canvasWrapper');
+    if (wrapper) wrapper.classList.add('dragging-table');
+    const el = document.getElementById('tbl-' + name);
+    if (el) {
+        el.classList.add('selected');
+        const rect = el.getBoundingClientRect();
+        dragOffX = e.clientX - rect.left;
+        dragOffY = e.clientY - rect.top;
+    }
+}
+
+function resetLayout() {
+    if (!window._origPos) return;
+    for (const [n, p] of Object.entries(window._origPos)) {
+        window._tablePos[n].x = p.x;
+        window._tablePos[n].y = p.y;
+        const el = document.getElementById('tbl-' + n);
+        if (el) {
+            el.style.left = p.x + 'px';
+            el.style.top = p.y + 'px';
+        }
+    }
+    updateArrows();
+    zoomFit();
+    showToast('Layout reset');
+}
+
+// --- Arrows ---
+function updateArrows() {
+    if (!window._relationships || !window._tablePos) return;
+    for (let i = 0; i < window._relationships.length; i++) {
+        const r = window._relationships[i];
+        const fromBox = window._tablePos[r.from];
+        const toBox = window._tablePos[r.to];
+        if (!fromBox || !toBox) continue;
+
+        const path = document.getElementById('rel-' + i);
+        if (!path) continue;
+
+        const fc = { x: fromBox.x + fromBox.w / 2, y: fromBox.y + fromBox.h / 2 };
+        const tc = { x: toBox.x + toBox.w / 2, y: toBox.y + toBox.h / 2 };
+
+        let x1, y1, x2, y2;
+        const dx = tc.x - fc.x;
+        const dy = tc.y - fc.y;
+
+        if (Math.abs(dx) > Math.abs(dy)) {
+            if (dx > 0) { x1 = fromBox.x + fromBox.w; x2 = toBox.x; }
+            else { x1 = fromBox.x; x2 = toBox.x + toBox.w; }
+            y1 = fc.y; y2 = tc.y;
+        } else {
+            if (dy > 0) { y1 = fromBox.y + fromBox.h; y2 = toBox.y; }
+            else { y1 = fromBox.y; y2 = toBox.y + toBox.h; }
+            x1 = fc.x; x2 = tc.x;
+        }
+
+        const mx = (x1 + x2) / 2;
+        const my = (y1 + y2) / 2;
+        let cpx1, cpy1, cpx2, cpy2;
+
+        if (Math.abs(dx) > Math.abs(dy)) {
+            cpx1 = mx; cpy1 = y1;
+            cpx2 = mx; cpy2 = y2;
+        } else {
+            cpx1 = x1; cpy1 = my;
+            cpx2 = x2; cpy2 = my;
+        }
+
+        path.setAttribute('d', `M ${x1} ${y1} C ${cpx1} ${cpy1}, ${cpx2} ${cpy2}, ${x2} ${y2}`);
+    }
+}
+
+// --- Highlight ---
+function highlightRelated(name) {
+    if (!window._relationships) return;
+    document.querySelectorAll('.arrows-svg path').forEach(p => {
+        if (p.dataset.from === name || p.dataset.to === name) {
+            p.classList.add('highlighted');
+        }
+    });
+    window._relationships.forEach(r => {
+        if (r.from === name) { const el = document.getElementById('tbl-' + r.to); if (el) el.classList.add('selected'); }
+        if (r.to === name) { const el = document.getElementById('tbl-' + r.from); if (el) el.classList.add('selected'); }
+    });
+}
+function unhighlightAll() {
+    document.querySelectorAll('.arrows-svg path.highlighted').forEach(p => p.classList.remove('highlighted'));
+    document.querySelectorAll('.tbl.selected').forEach(t => {
+        if (t.dataset.name !== dragTarget) t.classList.remove('selected');
+    });
+}
+
+// --- Focus category ---
+function focusCategory(cat) {
+    if (!window._tablePos || !window._tableCat) return;
+    const tables = Object.entries(window._tablePos).filter(([n]) => window._tableCat[n] === cat);
+    if (tables.length === 0) return;
+
+    let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+    for (const [n, p] of tables) {
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x + p.w);
+        maxY = Math.max(maxY, p.y + p.h);
+    }
+
+    const regionW = maxX - minX + 100;
+    const regionH = maxY - minY + 100;
+    const wrapper = document.getElementById('canvasWrapper');
+    const wW = wrapper.clientWidth;
+    const wH = wrapper.clientHeight - 50;
+
+    zoom = Math.min(wW / regionW, wH / regionH) * 0.85;
+    zoom = Math.max(0.15, Math.min(1.5, zoom));
+    panX = (wW / zoom - regionW) / 2 - minX + 50;
+    panY = (wH / zoom - regionH) / 2 - minY + 50;
+    applyTransform();
+}
+
+// --- Minimap ---
+function updateMinimap() {
+    const mc = document.getElementById('minimapCanvas');
+    if (!mc || !window._tablePos || !window._CANVAS_W) return;
+    const ctx = mc.getContext('2d');
+    const mw = mc.width;
+    const mh = mc.height;
+    const scaleX = mw / window._CANVAS_W;
+    const scaleY = mh / window._CANVAS_H;
+    const scale = Math.min(scaleX, scaleY);
+
+    ctx.clearRect(0, 0, mw, mh);
+
+    for (const [name, p] of Object.entries(window._tablePos)) {
+        const col = window._catColors[window._tableCat[name]]?.header || '#666';
+        ctx.fillStyle = col;
+        ctx.globalAlpha = 0.7;
+        ctx.fillRect(p.x * scale, p.y * scale, p.w * scale, Math.max(p.h * scale, 2));
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.strokeStyle = 'rgba(56,189,248,0.3)';
+    ctx.lineWidth = 0.5;
+    for (const r of window._relationships) {
+        const f = window._tablePos[r.from], t = window._tablePos[r.to];
+        if (!f || !t) continue;
+        ctx.beginPath();
+        ctx.moveTo((f.x + f.w / 2) * scale, (f.y + f.h / 2) * scale);
+        ctx.lineTo((t.x + t.w / 2) * scale, (t.y + t.h / 2) * scale);
+        ctx.stroke();
+    }
+
+    const vp = document.getElementById('minimapViewport');
+    const wrapper = document.getElementById('canvasWrapper');
+    if (!vp || !wrapper) return;
+    const wW = wrapper.clientWidth;
+    const wH = wrapper.clientHeight - 50;
+    vp.style.left = (-panX * scale) + 'px';
+    vp.style.top = (-panY * scale) + 'px';
+    vp.style.width = ((wW / zoom) * scale) + 'px';
+    vp.style.height = ((wH / zoom) * scale) + 'px';
+}
+
+function minimapNav(e) {
+    const mm = document.getElementById('minimap');
+    const mc = document.getElementById('minimapCanvas');
+    const wrapper = document.getElementById('canvasWrapper');
+    if (!mm || !mc || !wrapper) return;
+    const rect = mm.getBoundingClientRect();
+    const scaleX = mc.width / window._CANVAS_W;
+    const scaleY = mc.height / window._CANVAS_H;
+    const scale = Math.min(scaleX, scaleY);
+
+    const wW = wrapper.clientWidth;
+    const wH = wrapper.clientHeight - 50;
+
+    const mx = (e.clientX - rect.left) / scale;
+    const my = (e.clientY - rect.top) / scale;
+
+    panX = -(mx - wW / zoom / 2);
+    panY = -(my - wH / zoom / 2);
+    applyTransform();
+}
+
+// --- Download PNG ---
+function downloadPNG() {
+    showToast('Rendering PNG... please wait');
+
+    let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+    for (const p of Object.values(window._tablePos)) {
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x + p.w);
+        maxY = Math.max(maxY, p.y + p.h);
+    }
+    const pad = 60;
+    minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+    const cw = maxX - minX;
+    const ch = maxY - minY;
+
+    const c = document.createElement('canvas');
+    c.width = cw * 2;
+    c.height = ch * 2;
+    const ctx = c.getContext('2d');
+    ctx.scale(2, 2);
+    ctx.translate(-minX, -minY);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(minX, minY, cw, ch);
+
+    // Grid
+    ctx.strokeStyle = 'rgba(51,65,85,0.3)';
+    ctx.lineWidth = 0.5;
+    for (let x = Math.floor(minX/40)*40; x <= maxX; x += 40) {
+        ctx.beginPath(); ctx.moveTo(x, minY); ctx.lineTo(x, maxY); ctx.stroke();
+    }
+    for (let y = Math.floor(minY/40)*40; y <= maxY; y += 40) {
+        ctx.beginPath(); ctx.moveTo(minX, y); ctx.lineTo(maxX, y); ctx.stroke();
+    }
+
+    // Arrows
+    for (const r of window._relationships) {
+        const fromBox = window._tablePos[r.from];
+        const toBox = window._tablePos[r.to];
+        if (!fromBox || !toBox) continue;
+
+        const col = window._catColors[window._tableCat[r.from]]?.border || '#94a3b8';
+        ctx.strokeStyle = col;
+        ctx.globalAlpha = 0.5;
+        ctx.lineWidth = 1.5;
+
+        const fc = { x: fromBox.x + fromBox.w/2, y: fromBox.y + fromBox.h/2 };
+        const tc = { x: toBox.x + toBox.w/2, y: toBox.y + toBox.h/2 };
+        const dx = tc.x - fc.x, dy = tc.y - fc.y;
+
+        let x1, y1, x2, y2;
+        if (Math.abs(dx) > Math.abs(dy)) {
+            x1 = dx > 0 ? fromBox.x + fromBox.w : fromBox.x;
+            x2 = dx > 0 ? toBox.x : toBox.x + toBox.w;
+            y1 = fc.y; y2 = tc.y;
+        } else {
+            y1 = dy > 0 ? fromBox.y + fromBox.h : fromBox.y;
+            y2 = dy > 0 ? toBox.y : toBox.y + toBox.h;
+            x1 = fc.x; x2 = tc.x;
+        }
+
+        const mx = (x1+x2)/2, my2 = (y1+y2)/2;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        if (Math.abs(dx) > Math.abs(dy)) {
+            ctx.bezierCurveTo(mx, y1, mx, y2, x2, y2);
+        } else {
+            ctx.bezierCurveTo(x1, my2, x2, my2, x2, y2);
+        }
+        ctx.stroke();
+
+        // Arrowhead
+        const angle = Math.atan2(y2 - (Math.abs(dx) > Math.abs(dy) ? y2 : my2),
+                                 x2 - (Math.abs(dx) > Math.abs(dy) ? mx : x2));
+        const headLen = 8;
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI/6), y2 - headLen * Math.sin(angle - Math.PI/6));
+        ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI/6), y2 - headLen * Math.sin(angle + Math.PI/6));
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+
+    // Tables
+    for (const [name, p] of Object.entries(window._tablePos)) {
+        const def = window._schema[name];
+        const col = window._catColors[window._tableCat[name]];
+        if (!def || !col) continue;
+
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.fillRect(p.x + 3, p.y + 3, p.w, p.h);
+
+        ctx.fillStyle = col.bg;
+        ctx.strokeStyle = col.border;
+        ctx.lineWidth = 2;
+        roundRect(ctx, p.x, p.y, p.w, p.h, 6);
+        ctx.fill(); ctx.stroke();
+
+        ctx.fillStyle = col.header;
+        roundRectTop(ctx, p.x, p.y, p.w, 26, 6);
+        ctx.fill();
+
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 11px Segoe UI, sans-serif';
+        ctx.fillText(name, p.x + 10, p.y + 17);
+
+        ctx.font = '10px Segoe UI, sans-serif';
+        const colStartY = p.y + 30;
+        for (let ci = 0; ci < def.columns.length; ci++) {
+            const cc = def.columns[ci];
+            const cy = colStartY + ci * COL_H;
+            const isPk = def.primary_keys.includes(cc.name);
+            const isFk = def.foreign_keys.some(f => f.columns.includes(cc.name));
+
+            if (isPk) { ctx.fillStyle = '#b45309'; ctx.font = 'bold 10px Segoe UI, sans-serif'; }
+            else if (isFk) { ctx.fillStyle = '#0369a1'; ctx.font = 'italic 10px Segoe UI, sans-serif'; }
+            else { ctx.fillStyle = col.text; ctx.font = '10px Segoe UI, sans-serif'; }
+
+            const prefix = isPk ? '🔑 ' : (isFk ? '🔗 ' : '   ');
+            ctx.fillText(prefix + cc.name, p.x + 8, cy + 13);
+
+            ctx.fillStyle = col.text;
+            ctx.globalAlpha = 0.5;
+            ctx.font = '8px Segoe UI, sans-serif';
+            const shortType = cc.type.replace('longtext','text').replace(/datetime\(\d+\)/,'datetime');
+            const tw = ctx.measureText(shortType).width;
+            ctx.fillText(shortType, p.x + p.w - tw - 8, cy + 13);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // Watermark
+    ctx.fillStyle = '#334155';
+    ctx.font = '14px Segoe UI, sans-serif';
+    ctx.fillText(window._dbName + ' Database Diagram — Generated ' + new Date().toLocaleDateString(), minX + 20, maxY - 20);
+
+    c.toBlob(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = window._dbName.replace(/[^a-zA-Z0-9]/g, '_') + '_Diagram.png';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showToast('PNG downloaded!');
+    }, 'image/png');
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+function roundRectTop(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h);
+    ctx.lineTo(x, y + h);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+
+// --- Download SVG ---
+function downloadSVG() {
+    showToast('Generating SVG...');
+
+    let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+    for (const p of Object.values(window._tablePos)) {
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x + p.w);
+        maxY = Math.max(maxY, p.y + p.h);
+    }
+    const pad = 60;
+    minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+    const w = maxX - minX;
+    const h = maxY - minY;
+
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${minX} ${minY} ${w} ${h}" font-family="Segoe UI, sans-serif">\n`;
+    svg += `<rect x="${minX}" y="${minY}" width="${w}" height="${h}" fill="#0f172a"/>\n`;
+
+    // Arrows
+    for (const r of window._relationships) {
+        const fromBox = window._tablePos[r.from];
+        const toBox = window._tablePos[r.to];
+        if (!fromBox || !toBox) continue;
+        const col = window._catColors[window._tableCat[r.from]]?.border || '#94a3b8';
+        const fc = { x: fromBox.x + fromBox.w/2, y: fromBox.y + fromBox.h/2 };
+        const tc = { x: toBox.x + toBox.w/2, y: toBox.y + toBox.h/2 };
+        const dx = tc.x - fc.x, dy = tc.y - fc.y;
+        let x1,y1,x2,y2;
+        if (Math.abs(dx) > Math.abs(dy)) {
+            x1 = dx>0 ? fromBox.x+fromBox.w : fromBox.x;
+            x2 = dx>0 ? toBox.x : toBox.x+toBox.w;
+            y1=fc.y; y2=tc.y;
+        } else {
+            y1 = dy>0 ? fromBox.y+fromBox.h : fromBox.y;
+            y2 = dy>0 ? toBox.y : toBox.y+toBox.h;
+            x1=fc.x; x2=tc.x;
+        }
+        const mx=(x1+x2)/2, my=(y1+y2)/2;
+        let d;
+        if (Math.abs(dx)>Math.abs(dy)) {
+            d=`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+        } else {
+            d=`M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`;
+        }
+        svg += `<path d="${d}" fill="none" stroke="${col}" stroke-width="1.5" opacity="0.5"/>\n`;
+    }
+
+    // Tables
+    for (const [name, p] of Object.entries(window._tablePos)) {
+        const def = window._schema[name];
+        const col = window._catColors[window._tableCat[name]];
+        if (!def || !col) continue;
+
+        svg += `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="6" fill="${col.bg}" stroke="${col.border}" stroke-width="2"/>\n`;
+        svg += `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="26" rx="6" fill="${col.header}"/>\n`;
+        svg += `<rect x="${p.x}" y="${p.y+20}" width="${p.w}" height="6" fill="${col.header}"/>\n`;
+        svg += `<text x="${p.x+10}" y="${p.y+17}" fill="#fff" font-size="11" font-weight="bold">${escXml(name)}</text>\n`;
+
+        for (let ci = 0; ci < def.columns.length; ci++) {
+            const cc = def.columns[ci];
+            const cy = p.y + 30 + ci * COL_H;
+            const isPk = def.primary_keys.includes(cc.name);
+            const isFk = def.foreign_keys.some(f => f.columns.includes(cc.name));
+            const fill = isPk ? '#b45309' : (isFk ? '#0369a1' : col.text);
+            const fw = isPk ? 'bold' : 'normal';
+            const prefix = isPk ? '🔑 ' : (isFk ? '🔗 ' : '');
+            svg += `<text x="${p.x+8}" y="${cy+13}" fill="${fill}" font-size="10" font-weight="${fw}">${prefix}${escXml(cc.name)}</text>\n`;
+        }
+    }
+
+    svg += '</svg>';
+
+    const blob = new Blob([svg], { type: 'image/svg+xml' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = window._dbName.replace(/[^a-zA-Z0-9]/g, '_') + '_Diagram.svg';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('SVG downloaded!');
+}
+
+// --- Toast ---
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// --- Keyboard shortcuts ---
+document.addEventListener('keydown', e => {
+    if (e.key === '+' || e.key === '=') zoomIn();
+    if (e.key === '-') zoomOut();
+    if (e.key === '0') zoomFit();
+});
+
+// --- Init ---
+render();
+</script>
+</body>
+</html>
