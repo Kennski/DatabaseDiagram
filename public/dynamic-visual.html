@@ -464,38 +464,78 @@ function render() {
         tableBoxes[name] = { w: BOX_W, h, x: 0, y: 0, cat: tableCat[name] || 'Other' };
     }
 
-    // Layout: arrange categories in a grid
+    // Layout: compute actual category bounds, then position without overlaps
+    const GAP_X = BOX_W + 40;  // horizontal gap between tables within a category
+    const GAP_Y = 30;          // vertical gap between table rows within a category
+    const CAT_PAD = 60;        // padding between category groups
+
+    // Step 1: lay out tables within each category relative to (0,0)
     const catKeys = Object.keys(categories);
-    const gridCols = Math.ceil(Math.sqrt(catKeys.length));
-    const regionSpacingX = 800;
-    const regionSpacingY = 900;
+    const catBounds = {};
 
-    const catLayout = catKeys.map((cat, i) => ({
-        cat,
-        cx: 600 + (i % gridCols) * regionSpacingX,
-        cy: 600 + Math.floor(i / gridCols) * regionSpacingY
-    }));
-
-    for (const region of catLayout) {
-        const tablesInCat = Object.entries(tableBoxes).filter(([n, b]) => b.cat === region.cat);
+    for (const cat of catKeys) {
+        const tablesInCat = Object.entries(tableBoxes).filter(([n, b]) => b.cat === cat);
         if (tablesInCat.length === 0) continue;
 
         const cols = Math.ceil(Math.sqrt(tablesInCat.length));
-        const gapX = BOX_W + 40;
-        const totalW = cols * gapX;
         let col = 0, curY = 0, rowMaxH = 0;
-        const startX = region.cx - totalW / 2;
+        const positions = [];
 
         for (const [name, box] of tablesInCat) {
-            box.x = startX + col * gapX;
-            box.y = region.cy + curY;
+            positions.push({ name, rx: col * GAP_X, ry: curY });
             rowMaxH = Math.max(rowMaxH, box.h);
             col++;
             if (col >= cols) {
                 col = 0;
-                curY += rowMaxH + 30;
+                curY += rowMaxH + GAP_Y;
                 rowMaxH = 0;
             }
+        }
+        if (col > 0) curY += rowMaxH;
+
+        const groupW = Math.min(tablesInCat.length, cols) * GAP_X - (GAP_X - BOX_W);
+        catBounds[cat] = { w: groupW, h: curY, tables: positions };
+    }
+
+    // Step 2: arrange category groups on the canvas in a grid without overlaps
+    const activeCats = catKeys.filter(c => catBounds[c]);
+    const gridCols = Math.ceil(Math.sqrt(activeCats.length));
+
+    const colWidths = [];
+    const rowHeights = [];
+    for (let i = 0; i < activeCats.length; i++) {
+        const gc = i % gridCols;
+        const gr = Math.floor(i / gridCols);
+        const b = catBounds[activeCats[i]];
+        colWidths[gc] = Math.max(colWidths[gc] || 0, b.w);
+        rowHeights[gr] = Math.max(rowHeights[gr] || 0, b.h);
+    }
+
+    const colX = [CAT_PAD];
+    for (let c = 1; c < colWidths.length; c++) {
+        colX[c] = colX[c - 1] + colWidths[c - 1] + CAT_PAD * 2;
+    }
+    const rowY = [CAT_PAD + 40];
+    for (let r = 1; r < rowHeights.length; r++) {
+        rowY[r] = rowY[r - 1] + rowHeights[r - 1] + CAT_PAD * 2;
+    }
+
+    // Step 3: assign final positions
+    const catLayout = [];
+    for (let i = 0; i < activeCats.length; i++) {
+        const cat = activeCats[i];
+        const gc = i % gridCols;
+        const gr = Math.floor(i / gridCols);
+        const originX = colX[gc];
+        const originY = rowY[gr];
+        const b = catBounds[cat];
+
+        catLayout.push({ cat, cx: originX + b.w / 2, cy: originY });
+
+        for (const pos of b.tables) {
+            const box = tableBoxes[pos.name];
+            box.x = originX + pos.rx;
+            box.y = originY + pos.ry;
         }
     }
 
