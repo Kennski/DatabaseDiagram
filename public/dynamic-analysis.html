@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Database Diagram — Schema Analysis</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    min-height: 100vh;
+}
+.header {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border-bottom: 1px solid #334155;
+    padding: 24px 32px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+.header h1 { font-size: 24px; font-weight: 700; color: #f8fafc; margin-bottom: 4px; }
+.header .subtitle { font-size: 14px; color: #94a3b8; }
+.nav-bar {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.nav-btn {
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #2563eb, #7c3aed);
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+}
+.nav-btn.secondary {
+    background: linear-gradient(135deg, #475569, #334155);
+}
+
+/* Score card */
+.score-row {
+    display: flex;
+    gap: 16px;
+    padding: 24px 32px 0;
+    flex-wrap: wrap;
+}
+.score-card {
+    flex: 1;
+    min-width: 140px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+}
+.score-card .value {
+    font-size: 32px;
+    font-weight: 800;
+    margin-bottom: 4px;
+}
+.score-card .label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #94a3b8;
+}
+.score-card.errors .value { color: #f87171; }
+.score-card.warnings .value { color: #fbbf24; }
+.score-card.tips .value { color: #60a5fa; }
+.score-card.passed .value { color: #4ade80; }
+.score-card.grade .value { font-size: 48px; }
+
+/* Content */
+.content {
+    padding: 24px 32px;
+    max-width: 1100px;
+}
+
+/* Section */
+.analysis-section {
+    margin-bottom: 28px;
+}
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    user-select: none;
+}
+.section-header h2 {
+    font-size: 18px;
+    font-weight: 700;
+}
+.section-header .count {
+    font-size: 12px;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-weight: 700;
+}
+.section-header .toggle-icon {
+    font-size: 12px;
+    transition: transform 0.2s;
+    color: #64748b;
+}
+.section-header.collapsed .toggle-icon { transform: rotate(-90deg); }
+
+.findings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.section-header.collapsed + .findings-list { display: none; }
+
+/* Finding card */
+.finding {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 14px 18px;
+    border-left: 4px solid;
+    transition: border-color 0.15s;
+}
+.finding.error { border-left-color: #f87171; }
+.finding.warning { border-left-color: #fbbf24; }
+.finding.tip { border-left-color: #60a5fa; }
+.finding .finding-title {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.finding .finding-title .severity {
+    font-size: 10px;
+    padding: 1px 8px;
+    border-radius: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.finding.error .severity { background: rgba(248,113,113,0.15); color: #f87171; }
+.finding.warning .severity { background: rgba(251,191,36,0.15); color: #fbbf24; }
+.finding.tip .severity { background: rgba(96,165,250,0.15); color: #60a5fa; }
+.finding .finding-desc {
+    font-size: 13px;
+    color: #94a3b8;
+    line-height: 1.6;
+}
+.finding .finding-desc code {
+    background: rgba(59, 130, 246, 0.15);
+    color: #93c5fd;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    font-size: 12px;
+}
+.finding .tables-list {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.finding .table-tag {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.06);
+    color: #cbd5e1;
+    font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+}
+.finding .detail-toggle {
+    background: none;
+    border: none;
+    color: #60a5fa;
+    font-size: 12px;
+    cursor: pointer;
+    margin-top: 6px;
+    padding: 0;
+    font-weight: 600;
+}
+.finding .detail-toggle:hover { text-decoration: underline; }
+.finding .detail-body {
+    display: none;
+    margin-top: 8px;
+    font-size: 12px;
+    color: #94a3b8;
+    line-height: 1.7;
+}
+.finding .detail-body.open { display: block; }
+.finding .detail-body table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 6px;
+}
+.finding .detail-body th,
+.finding .detail-body td {
+    text-align: left;
+    padding: 4px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    font-size: 12px;
+}
+.finding .detail-body th {
+    color: #64748b;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* No data */
+.no-data {
+    text-align: center;
+    padding: 80px 32px;
+    color: #64748b;
+}
+.no-data h2 { color: #94a3b8; margin-bottom: 8px; }
+.no-data a { color: #38bdf8; text-decoration: none; }
+.no-data a:hover { text-decoration: underline; }
+
+/* All good */
+.all-good {
+    text-align: center;
+    padding: 20px;
+    color: #4ade80;
+    font-size: 14px;
+    font-weight: 600;
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+// Load schema from sessionStorage
+const raw = sessionStorage.getItem('dbdiagram_data');
+if (!raw) {
+    document.getElementById('app').innerHTML = `
+    <div class="no-data">
+        <h2>No schema data found</h2>
+        <p>Please <a href="/">connect to a database</a> or upload a SQL dump first.</p>
+    </div>`;
+} else {
+    const data = JSON.parse(raw);
+    const schema = data.schema;
+    const dbName = data.database || 'Database';
+    runAnalysis(schema, dbName, data);
+}
+
+function runAnalysis(schema, dbName, data) {
+    const findings = [];
+    const tableNames = Object.keys(schema);
+    const tableCount = tableNames.length;
+
+    // Collect all table names lowercase for lookups
+    const tableNamesLower = new Set(tableNames.map(n => n.toLowerCase()));
+
+    // Helper: all FK referenced tables for a table
+    function getRelated(name) {
+        const t = schema[name];
+        const related = new Set();
+        t.foreign_keys.forEach(fk => related.add(fk.ref_table));
+        // Also find tables that reference this table
+        for (const [other, ot] of Object.entries(schema)) {
+            ot.foreign_keys.forEach(fk => {
+                if (fk.ref_table.toLowerCase() === name.toLowerCase()) related.add(other);
+            });
+        }
+        return related;
+    }
+
+    // ==================== ERROR CHECKS ====================
+
+    // 1. Tables with no primary key
+    const noPK = tableNames.filter(n => schema[n].primary_keys.length === 0);
+    if (noPK.length > 0) {
+        findings.push({
+            severity: 'error',
+            title: 'Tables missing a Primary Key',
+            desc: `${noPK.length} table(s) have no primary key defined. Every table should have a primary key for data integrity and performance.`,
+            tables: noPK,
+            details: noPK.map(n => `<code>${esc(n)}</code> — ${schema[n].columns.length} columns, no PK`).join('<br>')
+        });
+    }
+
+    // 2. FK references to non-existent tables
+    const brokenFKs = [];
+    for (const [name, t] of Object.entries(schema)) {
+        t.foreign_keys.forEach(fk => {
+            if (!tableNamesLower.has(fk.ref_table.toLowerCase())) {
+                brokenFKs.push({ table: name, fk: fk.name, ref: fk.ref_table });
+            }
+        });
+    }
+    if (brokenFKs.length > 0) {
+        findings.push({
+            severity: 'error',
+            title: 'Foreign keys referencing missing tables',
+            desc: `${brokenFKs.length} foreign key(s) reference tables not found in the schema. These may be in another schema or may indicate a broken reference.`,
+            tables: [...new Set(brokenFKs.map(b => b.table))],
+            details: brokenFKs.map(b => `<code>${esc(b.table)}.${esc(b.fk)}</code> → <code>${esc(b.ref)}</code> (not found)`).join('<br>')
+        });
+    }
+
+    // 3. Duplicate column names in same table
+    const dupCols = [];
+    for (const [name, t] of Object.entries(schema)) {
+        const seen = {};
+        t.columns.forEach(c => {
+            const key = c.name.toLowerCase();
+            if (seen[key]) dupCols.push({ table: name, col: c.name });
+            seen[key] = true;
+        });
+    }
+    if (dupCols.length > 0) {
+        findings.push({
+            severity: 'error',
+            title: 'Duplicate column names',
+            desc: `${dupCols.length} duplicated column name(s) found within the same table.`,
+            tables: [...new Set(dupCols.map(d => d.table))],
+            details: dupCols.map(d => `<code>${esc(d.table)}.${esc(d.col)}</code>`).join('<br>')
+        });
+    }
+
+    // ==================== WARNING CHECKS ====================
+
+    // 4. Columns that look like FKs but have no FK constraint
+    const missingFKs = [];
+    for (const [name, t] of Object.entries(schema)) {
+        const fkColNames = new Set();
+        t.foreign_keys.forEach(fk => fk.columns.forEach(c => fkColNames.add(c.toLowerCase())));
+
+        t.columns.forEach(col => {
+            const cn = col.name.toLowerCase();
+            // Matches patterns like user_id, UserId, userId, user_ID
+            if ((cn.endsWith('_id') || cn.endsWith('id')) && cn !== 'id' && cn.length > 2) {
+                // Check if there's a plausible matching table
+                const prefix = cn.replace(/_?id$/i, '').toLowerCase();
+                if (prefix.length >= 2 && !fkColNames.has(cn)) {
+                    // Check if a table with this prefix exists
+                    const possibleTable = tableNames.find(tn =>
+                        tn.toLowerCase() === prefix ||
+                        tn.toLowerCase() === prefix + 's' ||
+                        tn.toLowerCase() === prefix + 'es'
+                    );
+                    if (possibleTable) {
+                        missingFKs.push({ table: name, col: col.name, possibleRef: possibleTable });
+                    }
+                }
+            }
+        });
+    }
+    if (missingFKs.length > 0) {
+        findings.push({
+            severity: 'warning',
+            title: 'Possible missing Foreign Key constraints',
+            desc: `${missingFKs.length} column(s) look like foreign keys but have no FK constraint. Adding constraints improves data integrity.`,
+            tables: [...new Set(missingFKs.map(m => m.table))],
+            details: '<table><tr><th>Table</th><th>Column</th><th>Possible Reference</th></tr>' +
+                missingFKs.map(m => `<tr><td><code>${esc(m.table)}</code></td><td><code>${esc(m.col)}</code></td><td><code>${esc(m.possibleRef)}</code></td></tr>`).join('') + '</table>'
+        });
+    }
+
+    // 5. FK columns without an index
+    const fkNoIndex = [];
+    for (const [name, t] of Object.entries(schema)) {
+        const indexedCols = new Set();
+        t.primary_keys.forEach(c => indexedCols.add(c.toLowerCase()));
+        t.keys.forEach(k => { if (k.columns.length > 0) indexedCols.add(k.columns[0].toLowerCase()); });
+
+        t.foreign_keys.forEach(fk => {
+            fk.columns.forEach(c => {
+                if (!indexedCols.has(c.toLowerCase())) {
+                    fkNoIndex.push({ table: name, col: c, fk: fk.name });
+                }
+            });
+        });
+    }
+    if (fkNoIndex.length > 0) {
+        findings.push({
+            severity: 'warning',
+            title: 'Foreign key columns without an index',
+            desc: `${fkNoIndex.length} FK column(s) are not covered by any index. This can cause slow JOINs and cascading deletes.`,
+            tables: [...new Set(fkNoIndex.map(f => f.table))],
+            details: fkNoIndex.map(f => `<code>${esc(f.table)}.${esc(f.col)}</code> (constraint: <code>${esc(f.fk)}</code>)`).join('<br>')
+        });
+    }
+
+    // 6. Orphaned tables (no FKs in or out)
+    const orphaned = tableNames.filter(name => {
+        const t = schema[name];
+        if (t.foreign_keys.length > 0) return false;
+        // Check if any other table references this one
+        for (const [other, ot] of Object.entries(schema)) {
+            if (ot.foreign_keys.some(fk => fk.ref_table.toLowerCase() === name.toLowerCase())) return false;
+        }
+        return true;
+    });
+    if (orphaned.length > 0) {
+        findings.push({
+            severity: 'warning',
+            title: 'Orphaned tables (no relationships)',
+            desc: `${orphaned.length} table(s) have no foreign key relationships to any other table. These may be standalone lookup tables or may be missing relationships.`,
+            tables: orphaned
+        });
+    }
+
+    // 7. Nullable FK columns
+    const nullableFKs = [];
+    for (const [name, t] of Object.entries(schema)) {
+        t.foreign_keys.forEach(fk => {
+            fk.columns.forEach(c => {
+                const col = t.columns.find(col => col.name.toLowerCase() === c.toLowerCase());
+                if (col && col.nullable) {
+                    nullableFKs.push({ table: name, col: c, ref: fk.ref_table });
+                }
+            });
+        });
+    }
+    if (nullableFKs.length > 0) {
+        findings.push({
+            severity: 'warning',
+            title: 'Nullable foreign key columns',
+            desc: `${nullableFKs.length} FK column(s) allow NULL values. This may be intentional (optional relationships) but can also indicate missing NOT NULL constraints.`,
+            tables: [...new Set(nullableFKs.map(f => f.table))],
+            details: nullableFKs.map(f => `<code>${esc(f.table)}.${esc(f.col)}</code> → <code>${esc(f.ref)}</code>`).join('<br>')
+        });
+    }
+
+    // 8. Very wide tables (>30 columns)
+    const wideTables = tableNames.filter(n => schema[n].columns.length > 30);
+    if (wideTables.length > 0) {
+        findings.push({
+            severity: 'warning',
+            title: 'Very wide tables (30+ columns)',
+            desc: `${wideTables.length} table(s) have more than 30 columns. Consider normalizing or splitting into related tables.`,
+            tables: wideTables,
+            details: wideTables.map(n => `<code>${esc(n)}</code> — ${schema[n].columns.length} columns`).join('<br>')
+        });
+    }
+
+    // 9. Redundant indexes (one index is prefix of another)
+    const redundantIdx = [];
+    for (const [name, t] of Object.entries(schema)) {
+        for (let i = 0; i < t.keys.length; i++) {
+            for (let j = 0; j < t.keys.length; j++) {
+                if (i === j) continue;
+                const a = t.keys[i].columns.map(c => c.toLowerCase());
+                const b = t.keys[j].columns.map(c => c.toLowerCase());
+                if (a.length < b.length && a.every((c, idx) => c === b[idx])) {
+                    redundantIdx.push({ table: name, shorter: t.keys[i].name, longer: t.keys[j].name });
+                }
+            }
+        }
+    }
+    if (redundantIdx.length > 0) {
+        findings.push({
+            severity: 'warning',
+            title: 'Potentially redundant indexes',
+            desc: `${redundantIdx.length} index(es) are prefixes of longer indexes. The shorter index may be unnecessary.`,
+            tables: [...new Set(redundantIdx.map(r => r.table))],
+            details: redundantIdx.map(r => `<code>${esc(r.table)}</code>: <code>${esc(r.shorter)}</code> is a prefix of <code>${esc(r.longer)}</code>`).join('<br>')
+        });
+    }
+
+    // ==================== TIP CHECKS ====================
+
+    // 10. Mixed naming conventions
+    let camelCount = 0, snakeCount = 0, pascalCount = 0;
+    const namingExamples = { camel: [], snake: [], pascal: [] };
+    for (const [name, t] of Object.entries(schema)) {
+        t.columns.forEach(col => {
+            const cn = col.name;
+            if (cn.includes('_')) { snakeCount++; if (namingExamples.snake.length < 3) namingExamples.snake.push(`${name}.${cn}`); }
+            else if (cn[0] === cn[0].toUpperCase() && cn.length > 1) { pascalCount++; if (namingExamples.pascal.length < 3) namingExamples.pascal.push(`${name}.${cn}`); }
+            else if (cn[0] === cn[0].toLowerCase() && cn !== cn.toLowerCase() && cn.length > 1) { camelCount++; if (namingExamples.camel.length < 3) namingExamples.camel.push(`${name}.${cn}`); }
+        });
+    }
+    const conventions = [];
+    if (snakeCount > 0) conventions.push(`snake_case (${snakeCount})`);
+    if (pascalCount > 0) conventions.push(`PascalCase (${pascalCount})`);
+    if (camelCount > 0) conventions.push(`camelCase (${camelCount})`);
+    if (conventions.length > 1) {
+        let details = 'Detected conventions: ' + conventions.join(', ') + '<br><br>';
+        if (namingExamples.snake.length) details += '<strong>snake_case:</strong> ' + namingExamples.snake.map(n => `<code>${esc(n)}</code>`).join(', ') + '<br>';
+        if (namingExamples.pascal.length) details += '<strong>PascalCase:</strong> ' + namingExamples.pascal.map(n => `<code>${esc(n)}</code>`).join(', ') + '<br>';
+        if (namingExamples.camel.length) details += '<strong>camelCase:</strong> ' + namingExamples.camel.map(n => `<code>${esc(n)}</code>`).join(', ') + '<br>';
+        findings.push({
+            severity: 'tip',
+            title: 'Mixed naming conventions',
+            desc: `Columns use ${conventions.length} different naming styles. Consider standardizing on one convention for consistency.`,
+            details
+        });
+    }
+
+    // 11. Tables missing timestamp columns
+    const noTimestamps = tableNames.filter(name => {
+        const cols = schema[name].columns.map(c => c.name.toLowerCase());
+        const hasCreated = cols.some(c => c.includes('created') || c.includes('createdat') || c.includes('created_at') || c.includes('date_created'));
+        const hasUpdated = cols.some(c => c.includes('updated') || c.includes('updatedat') || c.includes('updated_at') || c.includes('modified') || c.includes('date_modified'));
+        return !hasCreated && !hasUpdated;
+    });
+    // Only flag if some tables DO have timestamps (showing it's a pattern)
+    const tablesWithTs = tableCount - noTimestamps.length;
+    if (tablesWithTs > 0 && noTimestamps.length > 0 && noTimestamps.length < tableCount) {
+        findings.push({
+            severity: 'tip',
+            title: 'Tables missing timestamp columns',
+            desc: `${noTimestamps.length} table(s) lack created/updated timestamp columns, while ${tablesWithTs} other tables have them. Adding audit timestamps is a common best practice.`,
+            tables: noTimestamps.length <= 20 ? noTimestamps : noTimestamps.slice(0, 20),
+            details: noTimestamps.length > 20 ? `Showing first 20 of ${noTimestamps.length}. Others include: ${noTimestamps.slice(20, 30).map(n => '<code>' + esc(n) + '</code>').join(', ')}...` : undefined
+        });
+    }
+
+    // 12. Using text/blob columns that could be bounded
+    const unbounded = [];
+    for (const [name, t] of Object.entries(schema)) {
+        t.columns.forEach(col => {
+            const type = col.type.toLowerCase();
+            if (type === 'text' || type === 'ntext' || type === 'varchar(max)' || type === 'nvarchar(max)') {
+                unbounded.push({ table: name, col: col.name, type: col.type });
+            }
+        });
+    }
+    if (unbounded.length > 0) {
+        findings.push({
+            severity: 'tip',
+            title: 'Unbounded text columns',
+            desc: `${unbounded.length} column(s) use unbounded text types (TEXT, VARCHAR(MAX), etc.). If the expected length is known, using a bounded type can improve performance and storage.`,
+            tables: [...new Set(unbounded.map(u => u.table))],
+            details: '<table><tr><th>Table</th><th>Column</th><th>Type</th></tr>' +
+                unbounded.slice(0, 30).map(u => `<tr><td><code>${esc(u.table)}</code></td><td><code>${esc(u.col)}</code></td><td><code>${esc(u.type)}</code></td></tr>`).join('') +
+                '</table>' + (unbounded.length > 30 ? `<br>...and ${unbounded.length - 30} more` : '')
+        });
+    }
+
+    // 13. Boolean-looking columns using int
+    const boolAsInt = [];
+    for (const [name, t] of Object.entries(schema)) {
+        t.columns.forEach(col => {
+            const cn = col.name.toLowerCase();
+            const type = col.type.toLowerCase();
+            const isBoolName = cn.startsWith('is_') || cn.startsWith('is') || cn.startsWith('has_') || cn.startsWith('has') ||
+                               cn.startsWith('can_') || cn.startsWith('allow') || cn.startsWith('enable') ||
+                               cn.endsWith('_flag') || cn.endsWith('flag') || cn === 'active' || cn === 'deleted' || cn === 'enabled' || cn === 'visible';
+            if (isBoolName && (type === 'int' || type === 'int(11)' || type === 'integer' || type === 'bigint')) {
+                boolAsInt.push({ table: name, col: col.name, type: col.type });
+            }
+        });
+    }
+    if (boolAsInt.length > 0) {
+        findings.push({
+            severity: 'tip',
+            title: 'Boolean-like columns using integer types',
+            desc: `${boolAsInt.length} column(s) have boolean-sounding names but use integer types. Consider using BIT, BOOLEAN, or TINYINT(1) for clarity and storage efficiency.`,
+            tables: [...new Set(boolAsInt.map(b => b.table))],
+            details: '<table><tr><th>Table</th><th>Column</th><th>Current Type</th></tr>' +
+                boolAsInt.map(b => `<tr><td><code>${esc(b.table)}</code></td><td><code>${esc(b.col)}</code></td><td><code>${esc(b.type)}</code></td></tr>`).join('') + '</table>'
+        });
+    }
+
+    // 14. Tables with no indexes at all (beyond PK)
+    const noIndexes = tableNames.filter(n => schema[n].keys.length === 0 && schema[n].columns.length > 5);
+    if (noIndexes.length > 0) {
+        findings.push({
+            severity: 'tip',
+            title: 'Tables with no secondary indexes',
+            desc: `${noIndexes.length} table(s) with 6+ columns have no indexes beyond the primary key. Adding indexes on frequently queried columns can significantly improve performance.`,
+            tables: noIndexes.length <= 20 ? noIndexes : noIndexes.slice(0, 20),
+            details: noIndexes.length > 20 ? `Showing first 20 of ${noIndexes.length}.` : undefined
+        });
+    }
+
+    // 15. Single-column tables
+    const singleCol = tableNames.filter(n => schema[n].columns.length <= 1);
+    if (singleCol.length > 0) {
+        findings.push({
+            severity: 'tip',
+            title: 'Tables with very few columns',
+            desc: `${singleCol.length} table(s) have only 1 column. These may be unnecessary or could be merged into a related table.`,
+            tables: singleCol,
+            details: singleCol.map(n => `<code>${esc(n)}</code> — ${schema[n].columns.length} column(s)`).join('<br>')
+        });
+    }
+
+    // 16. Inconsistent column naming across tables (same concept, different names)
+    const idPatterns = {};
+    for (const [name, t] of Object.entries(schema)) {
+        t.foreign_keys.forEach(fk => {
+            const ref = fk.ref_table.toLowerCase();
+            fk.columns.forEach(c => {
+                if (!idPatterns[ref]) idPatterns[ref] = new Set();
+                idPatterns[ref].add(c);
+            });
+        });
+    }
+    const inconsistentFKNames = [];
+    for (const [ref, cols] of Object.entries(idPatterns)) {
+        if (cols.size > 1) {
+            inconsistentFKNames.push({ ref, names: [...cols] });
+        }
+    }
+    if (inconsistentFKNames.length > 0) {
+        findings.push({
+            severity: 'tip',
+            title: 'Inconsistent FK column naming',
+            desc: `${inconsistentFKNames.length} referenced table(s) are pointed to by differently-named FK columns across the schema. Standardizing FK column names improves readability.`,
+            details: inconsistentFKNames.map(i =>
+                `References to <code>${esc(i.ref)}</code>: ${i.names.map(n => '<code>' + esc(n) + '</code>').join(', ')}`
+            ).join('<br>')
+        });
+    }
+
+    // ==================== RENDER ====================
+    const errors = findings.filter(f => f.severity === 'error');
+    const warnings = findings.filter(f => f.severity === 'warning');
+    const tips = findings.filter(f => f.severity === 'tip');
+    const totalChecks = 16;
+    const passedChecks = totalChecks - findings.length;
+
+    // Grade calculation
+    const errorWeight = errors.length * 15;
+    const warningWeight = warnings.length * 5;
+    const tipWeight = tips.length * 1;
+    let score = Math.max(0, 100 - errorWeight - warningWeight - tipWeight);
+    let grade, gradeColor;
+    if (score >= 90) { grade = 'A'; gradeColor = '#4ade80'; }
+    else if (score >= 75) { grade = 'B'; gradeColor = '#a3e635'; }
+    else if (score >= 60) { grade = 'C'; gradeColor = '#fbbf24'; }
+    else if (score >= 40) { grade = 'D'; gradeColor = '#fb923c'; }
+    else { grade = 'F'; gradeColor = '#f87171'; }
+
+    let html = `
+    <div class="header">
+        <h1>🔍 ${esc(dbName)} — Schema Analysis</h1>
+        <p class="subtitle">${data.version || ''} · ${tableCount} tables analyzed · ${findings.length} findings</p>
+        <div class="nav-bar">
+            <a href="/dynamic-list.html" class="nav-btn">← Table List</a>
+            <a href="/dynamic-visual.html" class="nav-btn">← Visual Diagram</a>
+            <a href="/" class="nav-btn secondary">← New Connection</a>
+        </div>
+    </div>
+
+    <div class="score-row">
+        <div class="score-card grade">
+            <div class="value" style="color:${gradeColor}">${grade}</div>
+            <div class="label">Overall Grade</div>
+        </div>
+        <div class="score-card errors">
+            <div class="value">${errors.length}</div>
+            <div class="label">Errors</div>
+        </div>
+        <div class="score-card warnings">
+            <div class="value">${warnings.length}</div>
+            <div class="label">Warnings</div>
+        </div>
+        <div class="score-card tips">
+            <div class="value">${tips.length}</div>
+            <div class="label">Tips</div>
+        </div>
+        <div class="score-card passed">
+            <div class="value">${passedChecks}</div>
+            <div class="label">Checks Passed</div>
+        </div>
+    </div>
+
+    <div class="content">`;
+
+    function renderSection(title, items, severity) {
+        if (items.length === 0) return '';
+        const icon = severity === 'error' ? '🔴' : severity === 'warning' ? '🟡' : '🔵';
+        const countBg = severity === 'error' ? 'rgba(248,113,113,0.15);color:#f87171' :
+                        severity === 'warning' ? 'rgba(251,191,36,0.15);color:#fbbf24' : 'rgba(96,165,250,0.15);color:#60a5fa';
+        let s = `<div class="analysis-section">
+            <div class="section-header" onclick="this.classList.toggle('collapsed')">
+                <span class="toggle-icon">▼</span>
+                <h2>${icon} ${title}</h2>
+                <span class="count" style="background:${countBg}">${items.length}</span>
+            </div>
+            <div class="findings-list">`;
+
+        items.forEach((f, i) => {
+            const id = `detail-${severity}-${i}`;
+            s += `<div class="finding ${f.severity}">
+                <div class="finding-title">
+                    <span class="severity">${f.severity}</span>
+                    ${esc(f.title)}
+                </div>
+                <div class="finding-desc">${f.desc}</div>`;
+            if (f.tables && f.tables.length > 0) {
+                s += `<div class="tables-list">`;
+                f.tables.forEach(t => { s += `<span class="table-tag">${esc(t)}</span>`; });
+                s += `</div>`;
+            }
+            if (f.details) {
+                s += `<button class="detail-toggle" onclick="document.getElementById('${id}').classList.toggle('open');this.textContent=this.textContent==='Show details'?'Hide details':'Show details'">Show details</button>
+                    <div class="detail-body" id="${id}">${f.details}</div>`;
+            }
+            s += `</div>`;
+        });
+
+        s += `</div></div>`;
+        return s;
+    }
+
+    html += renderSection('Errors', errors, 'error');
+    html += renderSection('Warnings', warnings, 'warning');
+    html += renderSection('Tips & Best Practices', tips, 'tip');
+
+    if (findings.length === 0) {
+        html += `<div class="all-good">✅ All ${totalChecks} checks passed — your schema looks great!</div>`;
+    }
+
+    html += `</div>`;
+    document.getElementById('app').innerHTML = html;
+}
+</script>
+</body>
+</html>

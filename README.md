@@ -1,6 +1,6 @@
 # DatabaseDiagram
 
-An interactive web-based tool for visualizing database schemas. Connect to a live **MySQL**, **PostgreSQL**, or **SQL Server** database — or paste / upload a SQL dump — to instantly generate searchable table lists and draggable visual diagrams.
+An interactive web-based tool for visualizing and analyzing database schemas. Connect to a live **MySQL**, **PostgreSQL**, or **SQL Server** database — or paste / upload a SQL dump — to instantly generate searchable table lists, draggable visual diagrams, and automated schema quality analysis.
 
 ---
 
@@ -18,6 +18,7 @@ An interactive web-based tool for visualizing database schemas. Connect to a liv
 - **Category Legend** — Click a category to focus/highlight its tables
 - **Recent Connections** — Previously used database connections are saved in localStorage for quick access
 - **Non-Overlapping Layout** — Tables are automatically arranged in a grid layout with no overlaps, while still allowing manual repositioning by dragging
+- **Schema Analysis** — Automated analysis page that flags design issues (missing PKs, broken FKs, missing indexes), warnings (orphaned tables, nullable FKs, wide tables), and best-practice tips (naming conventions, timestamps, unbounded text columns). Includes an overall letter grade.
 
 ---
 
@@ -71,7 +72,8 @@ An interactive web-based tool for visualizing database schemas. Connect to a liv
    - **SQL File / Paste** — Select the SQL dialect (or leave on Auto-Detect), then drag and drop a `.sql` file or paste CREATE TABLE statements. A guide appears for each dialect showing how to export a schema-only dump from tools like MySQL Workbench, pgAdmin, SSMS, or the command line.
 3. You will be taken to the **Table List** view showing all tables, columns, and relationships
 4. Click **Visual Diagram** in the navigation bar to see the interactive visual diagram
-5. Use the diagram controls:
+5. Click **🔍 Analysis** to see a full schema quality report with errors, warnings, and tips
+6. Use the diagram controls:
    - **Scroll** to zoom in/out
    - **Click and drag** on the background to pan
    - **Drag a table** to reposition it
@@ -96,7 +98,8 @@ An interactive web-based tool for visualizing database schemas. Connect to a liv
 ├── public/
 │   ├── index.html               # Connection form (entry point)
 │   ├── dynamic-list.html        # Table list view
-│   └── dynamic-visual.html      # Visual diagram
+│   ├── dynamic-visual.html      # Visual diagram
+│   └── dynamic-analysis.html    # Schema analysis & tips
 └── .gitignore
 ```
 
