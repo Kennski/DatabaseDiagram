@@ -462,7 +462,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`\n  Database Diagram Tool running at:`);
     console.log(`  → http://localhost:${PORT}\n`);
-    console.log(`  Static diagrams:`);
-    console.log(`  → http://localhost:${PORT}/database_diagram.html`);
-    console.log(`  → http://localhost:${PORT}/visual_diagram.html\n`);
 });

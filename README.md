@@ -78,20 +78,6 @@ An interactive web-based tool for visualizing database schemas. Connect to a liv
    - Click a **category** in the legend to focus on that group
    - Use the **Download** buttons (PNG / SVG) to export the diagram
 
-### Static Diagrams
-
-Pre-generated static diagrams are also available if you have a `schema.json` file:
-
-- [http://localhost:3000/database_diagram.html](http://localhost:3000/database_diagram.html) — Static table list
-- [http://localhost:3000/visual_diagram.html](http://localhost:3000/visual_diagram.html) — Static visual diagram
-
-To regenerate the static diagrams from a `schema.json` file:
-
-```bash
-node generate_diagram.js
-node generate_visual_diagram.js
-```
-
 ### Keyboard Shortcuts (Visual Diagram)
 
 | Key | Action |
@@ -107,15 +93,10 @@ node generate_visual_diagram.js
 ```
 ├── server.js                    # Express backend (API + static file serving)
 ├── package.json                 # Node.js project configuration
-├── schema.json                  # Pre-parsed schema data (for static diagrams)
-├── generate_diagram.js          # Generates static table list HTML
-├── generate_visual_diagram.js   # Generates static visual diagram HTML
-├── database_diagram.html        # Static table list page
-├── visual_diagram.html          # Static visual diagram page
 ├── public/
-│   ├── index.html               # Dynamic tool — connection form
-│   ├── dynamic-list.html        # Dynamic tool — table list view
-│   └── dynamic-visual.html      # Dynamic tool — visual diagram
+│   ├── index.html               # Connection form (entry point)
+│   ├── dynamic-list.html        # Table list view
+│   └── dynamic-visual.html      # Visual diagram
 └── .gitignore
 ```
 
