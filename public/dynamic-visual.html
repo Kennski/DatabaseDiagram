@@ -335,10 +335,20 @@ function autoCategorize(schema) {
         if (!found) unassigned.push(t);
     }
 
+    // Generic prefixes that don't convey category meaning — strip them
+    const genericPrefixes = new Set(['tbl','vw','sp','fn','usp','udf','dim','fact','tmp','temp','stg','raw','lu','lkp','ref','t','v','p','dbo']);
+
     function getPrefix(name) {
-        if (name.includes('_')) return name.split('_')[0].toLowerCase();
+        if (name.includes('_')) {
+            const parts = name.split('_').filter(Boolean);
+            let i = 0;
+            while (i < parts.length - 1 && genericPrefixes.has(parts[i].toLowerCase())) i++;
+            return parts[i].toLowerCase();
+        }
         const parts = name.replace(/([a-z])([A-Z])/g, '$1_$2').split('_');
-        return parts[0].toLowerCase();
+        let i = 0;
+        while (i < parts.length - 1 && genericPrefixes.has(parts[i].toLowerCase())) i++;
+        return parts[i].toLowerCase();
     }
 
     const prefixGroups = {};

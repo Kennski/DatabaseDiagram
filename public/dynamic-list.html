@@ -366,15 +366,23 @@ function autoCategorize(schema) {
     }
 
     // Group remaining tables by prefix heuristic
+    // Generic prefixes that don't convey category meaning — strip them
+    const genericPrefixes = new Set(['tbl','vw','sp','fn','usp','udf','dim','fact','tmp','temp','stg','raw','lu','lkp','ref','t','v','p','dbo']);
+
     // Find common prefixes (split by _ or camelCase boundaries)
     function getPrefix(name) {
-        // Split on underscore
         if (name.includes('_')) {
-            return name.split('_')[0].toLowerCase();
+            const parts = name.split('_').filter(Boolean);
+            // Skip leading generic prefix(es) to find the meaningful segment
+            let i = 0;
+            while (i < parts.length - 1 && genericPrefixes.has(parts[i].toLowerCase())) i++;
+            return parts[i].toLowerCase();
         }
-        // Split on camelCase boundary
+        // camelCase/PascalCase — split on boundaries
         const parts = name.replace(/([a-z])([A-Z])/g, '$1_$2').split('_');
-        return parts[0].toLowerCase();
+        let i = 0;
+        while (i < parts.length - 1 && genericPrefixes.has(parts[i].toLowerCase())) i++;
+        return parts[i].toLowerCase();
     }
 
     const prefixGroups = {};
