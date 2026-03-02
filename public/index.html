@@ -259,6 +259,70 @@ body {
 }
 .footer-links a:hover { color: #38bdf8; }
 
+/* Guide box */
+.guide-box {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-top: 16px;
+    display: none;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #94a3b8;
+}
+.guide-box.visible { display: block; }
+.guide-box h4 {
+    font-size: 13px;
+    font-weight: 700;
+    color: #e2e8f0;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.guide-box h5 {
+    font-size: 12px;
+    font-weight: 600;
+    color: #cbd5e1;
+    margin: 10px 0 4px;
+}
+.guide-box code {
+    background: rgba(59, 130, 246, 0.15);
+    color: #93c5fd;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    font-size: 12px;
+}
+.guide-box pre {
+    background: #020617;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 6px 0 4px;
+    overflow-x: auto;
+    font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    font-size: 12px;
+    color: #93c5fd;
+    line-height: 1.5;
+}
+.guide-box ul {
+    margin: 4px 0 4px 18px;
+    padding: 0;
+}
+.guide-box ul li { margin-bottom: 2px; }
+.guide-toggle {
+    background: none;
+    border: none;
+    color: #60a5fa;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 0;
+    margin-top: 8px;
+    font-weight: 600;
+}
+.guide-toggle:hover { text-decoration: underline; }
+
 /* Recent connections */
 .recent-section {
     margin-top: 24px;
@@ -353,6 +417,51 @@ body {
                         <input type="text" id="db-name" placeholder="my_database" required>
                     </div>
                 </div>
+                <!-- Connection Guide -->
+                <div id="guide-connect" class="guide-box visible">
+                    <div id="guide-mysql">
+                        <h4>MySQL / MariaDB — How to connect</h4>
+                        <h5>Connection details</h5>
+                        <ul>
+                            <li>Default port: <code>3306</code></li>
+                            <li>Default user: <code>root</code></li>
+                            <li>Find your host in your hosting panel, or use <code>localhost</code> for local installs</li>
+                        </ul>
+                        <h5>Export a SQL dump (alternative)</h5>
+                        <p>Using <strong>MySQL Workbench</strong>: <em>Server → Data Export → select schema → Export to Self-Contained File</em></p>
+                        <p>Using the command line:</p>
+                        <pre>mysqldump -u root -p --no-data my_database > dump.sql</pre>
+                    </div>
+                    <div id="guide-postgres" style="display:none">
+                        <h4>PostgreSQL — How to connect</h4>
+                        <h5>Connection details</h5>
+                        <ul>
+                            <li>Default port: <code>5432</code></li>
+                            <li>Default user: <code>postgres</code></li>
+                            <li>Find your host in your cloud dashboard, or use <code>localhost</code> for local installs</li>
+                        </ul>
+                        <h5>Export a SQL dump (alternative)</h5>
+                        <p>Using <strong>pgAdmin</strong>: <em>Right-click database → Backup → Format: Plain → Only schema</em></p>
+                        <p>Using the command line:</p>
+                        <pre>pg_dump -U postgres --schema-only my_database > dump.sql</pre>
+                    </div>
+                    <div id="guide-mssql" style="display:none">
+                        <h4>SQL Server — How to connect</h4>
+                        <h5>Connection details</h5>
+                        <ul>
+                            <li>Default port: <code>1433</code></li>
+                            <li>Default user: <code>sa</code> (SQL auth) or leave blank for Windows Authentication</li>
+                            <li>For Azure SQL, use <code>your-server.database.windows.net</code> as host</li>
+                        </ul>
+                        <h5>Export with SQL Server Management Studio (SSMS)</h5>
+                        <p><em>Right-click database → Tasks → Generate Scripts → Script entire database → choose "Schema Only" → Save to file</em></p>
+                        <h5>Using the command line (sqlcmd):</h5>
+                        <pre>sqlcmd -S localhost -d my_database -E -Q "SET NOCOUNT ON" -i schema_script.sql -o dump.sql</pre>
+                        <p>Or use <strong>mssql-scripter</strong>:</p>
+                        <pre>mssql-scripter -S localhost -d my_database --schema-only -f dump.sql</pre>
+                    </div>
+                </div>
+
                 <button type="submit" class="submit-btn" id="connect-btn">
                     <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 4.69 2 8v8c0 3.31 4.48 6 10 6s10-2.69 10-6V8c0-3.31-4.48-6-10-6zm0 2c4.42 0 8 1.79 8 4s-3.58 4-8 4-8-1.79-8-4 3.58-4 8-4zM4 16v-2.54C5.82 14.4 8.74 15 12 15s6.18-.6 8-1.54V16c0 2.21-3.58 4-8 4s-8-1.79-8-4z"/></svg>
                     Connect &amp; Generate Diagrams
@@ -370,6 +479,40 @@ body {
     <!-- SQL File / Paste Panel -->
     <div id="panel-upload" class="panel">
         <div class="card">
+            <div class="form-row full" style="margin-bottom:16px">
+                <div class="form-group">
+                    <label>SQL Dialect</label>
+                    <select id="sql-dialect">
+                        <option value="auto" selected>Auto-Detect</option>
+                        <option value="mysql">MySQL / MariaDB</option>
+                        <option value="postgres">PostgreSQL</option>
+                        <option value="mssql">SQL Server</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="guide-upload" class="guide-box">
+                <div id="upload-guide-mysql" style="display:none">
+                    <h4>How to export a MySQL / MariaDB dump</h4>
+                    <p><strong>MySQL Workbench:</strong> <em>Server → Data Export → select schema → Export to Self-Contained File</em></p>
+                    <p><strong>Command line:</strong></p>
+                    <pre>mysqldump -u root -p --no-data my_database > dump.sql</pre>
+                    <p><strong>phpMyAdmin:</strong> <em>Select database → Export → Custom → Structure only → Go</em></p>
+                </div>
+                <div id="upload-guide-postgres" style="display:none">
+                    <h4>How to export a PostgreSQL dump</h4>
+                    <p><strong>pgAdmin:</strong> <em>Right-click database → Backup → Format: Plain → Only schema</em></p>
+                    <p><strong>Command line:</strong></p>
+                    <pre>pg_dump -U postgres --schema-only my_database > dump.sql</pre>
+                </div>
+                <div id="upload-guide-mssql" style="display:none">
+                    <h4>How to export from SQL Server (SSMS)</h4>
+                    <p><strong>SSMS:</strong> <em>Right-click database → Tasks → Generate Scripts → Script entire database → Schema Only → Save to file</em></p>
+                    <p><strong>mssql-scripter (CLI):</strong></p>
+                    <pre>mssql-scripter -S localhost -d my_database --schema-only -f dump.sql</pre>
+                </div>
+            </div>
+
             <div class="upload-area" id="upload-area">
                 <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM6 20V4h5v7h7v9H6z"/></svg>
                 <p>Click or drag a <strong>.sql</strong> file here</p>
@@ -442,8 +585,14 @@ uploadArea.addEventListener('drop', (e) => {
     }
 });
 
-// Database type → default port / placeholder
+// Database type → default port / placeholder + guide switching
 const dbDefaults = { mysql: { port: 3306, user: 'root' }, postgres: { port: 5432, user: 'postgres' }, mssql: { port: 1433, user: 'sa' } };
+const guideIds = ['guide-mysql', 'guide-postgres', 'guide-mssql'];
+function showGuide(type) {
+    guideIds.forEach(id => document.getElementById(id).style.display = 'none');
+    const target = type === 'postgres' ? 'guide-postgres' : type === 'mssql' ? 'guide-mssql' : 'guide-mysql';
+    document.getElementById(target).style.display = 'block';
+}
 document.getElementById('db-type').addEventListener('change', function() {
     const d = dbDefaults[this.value] || dbDefaults.mysql;
     const portEl = document.getElementById('db-port');
@@ -451,6 +600,21 @@ document.getElementById('db-type').addEventListener('change', function() {
     portEl.placeholder = d.port;
     if (!portEl.value || Object.values(dbDefaults).some(v => v.port == portEl.value)) portEl.value = d.port;
     userEl.placeholder = d.user;
+    showGuide(this.value);
+});
+
+// SQL dialect selector → upload guide
+const uploadGuideIds = ['upload-guide-mysql', 'upload-guide-postgres', 'upload-guide-mssql'];
+document.getElementById('sql-dialect').addEventListener('change', function() {
+    const guideBox = document.getElementById('guide-upload');
+    uploadGuideIds.forEach(id => document.getElementById(id).style.display = 'none');
+    if (this.value === 'auto') {
+        guideBox.classList.remove('visible');
+    } else {
+        guideBox.classList.add('visible');
+        const target = this.value === 'postgres' ? 'upload-guide-postgres' : this.value === 'mssql' ? 'upload-guide-mssql' : 'upload-guide-mysql';
+        document.getElementById(target).style.display = 'block';
+    }
 });
 
 // Recent connections (localStorage)

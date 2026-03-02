@@ -67,8 +67,8 @@ An interactive web-based tool for visualizing database schemas. Connect to a liv
 
 1. Open [http://localhost:3000](http://localhost:3000) in your browser
 2. Choose a connection method:
-   - **Live Connection** — Select your database type (MySQL, PostgreSQL, or SQL Server), enter the connection details, and click **Connect & Generate**. The port updates automatically when you switch database types. Password is optional for all types.
-   - **SQL File / Paste** — Drag and drop a `.sql` file onto the upload area, or paste SQL content into the text box, then click **Parse & Generate**. Works with MySQL, PostgreSQL, and SQL Server dump formats.
+   - **Live Connection** — Select your database type (MySQL, PostgreSQL, or SQL Server), enter the connection details, and click **Connect & Generate**. The port updates automatically when you switch database types. Password is optional for all types. A built-in guide shows connection details and export instructions for each database type.
+   - **SQL File / Paste** — Select the SQL dialect (or leave on Auto-Detect), then drag and drop a `.sql` file or paste CREATE TABLE statements. A guide appears for each dialect showing how to export a schema-only dump from tools like MySQL Workbench, pgAdmin, SSMS, or the command line.
 3. You will be taken to the **Table List** view showing all tables, columns, and relationships
 4. Click **Visual Diagram** in the navigation bar to see the interactive visual diagram
 5. Use the diagram controls:
