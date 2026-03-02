@@ -195,6 +195,7 @@ let html = `<!DOCTYPE html>
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
         gap: 16px;
+        align-items: start;
     }
     
     .table-card {
