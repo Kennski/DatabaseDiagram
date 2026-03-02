@@ -794,8 +794,8 @@ document.addEventListener('wheel', e => {
     const rect = wrapper.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
-    panX -= mx / newZoom - mx / zoom;
-    panY -= (my - 50) / newZoom - (my - 50) / zoom;
+    panX += mx / newZoom - mx / zoom;
+    panY += (my - 50) / newZoom - (my - 50) / zoom;
 
     zoom = newZoom;
     applyTransform();
