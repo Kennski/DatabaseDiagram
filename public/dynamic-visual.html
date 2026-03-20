@@ -312,6 +312,8 @@ function escXml(s) {
 // --- Auto-categorization engine (same as list view) ---
 function autoCategorize(schema) {
     const tableNames = Object.keys(schema);
+
+    // ── Phase 1: Known pattern rules (highest priority) ──
     const rules = [
         { name: 'Identity & Auth', patterns: [/^aspnet/i, /^role/i, /^user(claim|login|role|token)/i, /identity/i, /auth/i, /permission/i, /claim/i] },
         { name: 'Hangfire (Job Queue)', patterns: [/^hangfire/i] },
@@ -335,29 +337,200 @@ function autoCategorize(schema) {
         if (!found) unassigned.push(t);
     }
 
-    // Generic prefixes that don't convey category meaning — strip them
+    // ── Phase 2: Extract meaningful words from table names ──
     const genericPrefixes = new Set(['tbl','vw','sp','fn','usp','udf','dim','fact','tmp','temp','stg','raw','lu','lkp','ref','t','v','p','dbo']);
 
-    function getPrefix(name) {
-        if (name.includes('_')) {
-            const parts = name.split('_').filter(Boolean);
-            let i = 0;
-            while (i < parts.length - 1 && genericPrefixes.has(parts[i].toLowerCase())) i++;
-            return parts[i].toLowerCase();
-        }
-        const parts = name.replace(/([a-z])([A-Z])/g, '$1_$2').split('_');
+    function tokenize(name) {
+        // First split on underscores
+        let parts = name.split('_').filter(Boolean);
+        // Strip leading generic prefixes
         let i = 0;
         while (i < parts.length - 1 && genericPrefixes.has(parts[i].toLowerCase())) i++;
-        return parts[i].toLowerCase();
+        parts = parts.slice(i);
+        // Then split each remaining part on camelCase/PascalCase boundaries
+        const tokens = [];
+        for (const part of parts) {
+            const sub = part.replace(/([a-z])([A-Z])/g, '$1_$2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2').split('_');
+            tokens.push(...sub);
+        }
+        return tokens.map(p => p.toLowerCase());
     }
 
-    const prefixGroups = {};
+    function sharedPrefixLen(a, b) {
+        let n = 0;
+        for (let i = 0; i < Math.min(a.length, b.length); i++) {
+            if (a[i] === b[i]) n++;
+            else break;
+        }
+        return n;
+    }
+
+    const tableTokens = {};
     for (const t of unassigned) {
-        const prefix = getPrefix(t);
-        if (!prefixGroups[prefix]) prefixGroups[prefix] = [];
-        prefixGroups[prefix].push(t);
+        tableTokens[t] = tokenize(t);
     }
 
+    // ── Phase 3: Multi-word prefix grouping via union-find ──
+    const parent = {};
+    function find(x) {
+        if (parent[x] !== x) parent[x] = find(parent[x]);
+        return parent[x];
+    }
+    function union(a, b) {
+        const ra = find(a), rb = find(b);
+        if (ra !== rb) parent[ra] = rb;
+    }
+
+    for (const t of unassigned) parent[t] = t;
+
+    for (let i = 0; i < unassigned.length; i++) {
+        for (let j = i + 1; j < unassigned.length; j++) {
+            const a = unassigned[i], b = unassigned[j];
+            const shared = sharedPrefixLen(tableTokens[a], tableTokens[b]);
+            if (shared >= 1) {
+                union(a, b);
+            }
+        }
+    }
+
+    const prefixGroupsMap = {};
+    for (const t of unassigned) {
+        const root = find(t);
+        if (!prefixGroupsMap[root]) prefixGroupsMap[root] = [];
+        prefixGroupsMap[root].push(t);
+    }
+
+    function groupCommonPrefix(tables) {
+        if (tables.length === 0) return [];
+        let common = tableTokens[tables[0]].slice();
+        for (let i = 1; i < tables.length; i++) {
+            const tokens = tableTokens[tables[i]];
+            let n = 0;
+            for (let j = 0; j < Math.min(common.length, tokens.length); j++) {
+                if (common[j] === tokens[j]) n++;
+                else break;
+            }
+            common = common.slice(0, n);
+            if (common.length === 0) break;
+        }
+        return common;
+    }
+
+    const prefixCategories = {};
+    const tableToCat = {};
+
+    for (const [, tables] of Object.entries(prefixGroupsMap)) {
+        if (tables.length < 2) continue;
+        const common = groupCommonPrefix(tables);
+        const catName = common.length > 0
+            ? common.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+            : null;
+        if (catName) {
+            if (!prefixCategories[catName]) prefixCategories[catName] = [];
+            prefixCategories[catName].push(...tables);
+            for (const t of tables) tableToCat[t] = catName;
+        }
+    }
+
+    // ── Phase 4: FK relationship refinement ──
+    const fkNeighbors = {};
+    for (const t of tableNames) {
+        if (!fkNeighbors[t]) fkNeighbors[t] = new Set();
+        const def = schema[t];
+        for (const fk of def.foreign_keys) {
+            const ref = fk.ref_table;
+            if (!fkNeighbors[ref]) fkNeighbors[ref] = new Set();
+            fkNeighbors[t].add(ref);
+            fkNeighbors[ref].add(t);
+        }
+    }
+
+    // 4a: Merge small prefix groups into larger FK-connected groups
+    const catSizes = {};
+    for (const [cat, tables] of Object.entries(prefixCategories)) {
+        catSizes[cat] = tables.length;
+    }
+
+    for (const [cat, tables] of Object.entries(prefixCategories)) {
+        if (tables.length >= 3) continue;
+        const connectionCount = {};
+        for (const t of tables) {
+            for (const neighbor of (fkNeighbors[t] || [])) {
+                const neighborCat = tableToCat[neighbor] || assigned[neighbor];
+                if (neighborCat && neighborCat !== cat) {
+                    connectionCount[neighborCat] = (connectionCount[neighborCat] || 0) + 1;
+                }
+            }
+        }
+        let bestCat = null, bestCount = 0;
+        for (const [targetCat, count] of Object.entries(connectionCount)) {
+            if (count > bestCount && (catSizes[targetCat] || 0) >= 3) {
+                bestCat = targetCat;
+                bestCount = count;
+            }
+        }
+        if (bestCat && bestCount >= tables.length) {
+            prefixCategories[bestCat].push(...tables);
+            for (const t of tables) tableToCat[t] = bestCat;
+            delete prefixCategories[cat];
+        }
+    }
+
+    // 4b: Place solo tables via FK connections
+    const soloTables = unassigned.filter(t => !tableToCat[t]);
+    const remainingSolo = [];
+
+    for (const t of soloTables) {
+        const catVotes = {};
+        for (const neighbor of (fkNeighbors[t] || [])) {
+            const neighborCat = tableToCat[neighbor] || assigned[neighbor];
+            if (neighborCat) {
+                catVotes[neighborCat] = (catVotes[neighborCat] || 0) + 1;
+            }
+        }
+        let bestCat = null, bestVotes = 0;
+        for (const [cat, votes] of Object.entries(catVotes)) {
+            if (votes > bestVotes) { bestCat = cat; bestVotes = votes; }
+        }
+        if (bestCat) {
+            tableToCat[t] = bestCat;
+            if (prefixCategories[bestCat]) prefixCategories[bestCat].push(t);
+        } else {
+            remainingSolo.push(t);
+        }
+    }
+
+    // 4c: Form FK-connected clusters among remaining solos
+    const soloVisited = new Set();
+    for (const t of remainingSolo) {
+        if (soloVisited.has(t)) continue;
+        const cluster = [];
+        const queue = [t];
+        soloVisited.add(t);
+        while (queue.length > 0) {
+            const curr = queue.shift();
+            cluster.push(curr);
+            for (const neighbor of (fkNeighbors[curr] || [])) {
+                if (!soloVisited.has(neighbor) && remainingSolo.includes(neighbor)) {
+                    soloVisited.add(neighbor);
+                    queue.push(neighbor);
+                }
+            }
+        }
+        if (cluster.length >= 2) {
+            const hub = cluster.reduce((best, c) => {
+                const conns = (fkNeighbors[c] || new Set()).size;
+                return conns > (fkNeighbors[best] || new Set()).size ? c : best;
+            });
+            const hubTokens = tableTokens[hub] || tokenize(hub);
+            const catName = hubTokens.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            const finalName = prefixCategories[catName] ? catName + ' (Related)' : catName;
+            prefixCategories[finalName] = cluster;
+            for (const c of cluster) tableToCat[c] = finalName;
+        }
+    }
+
+    // ── Phase 5: Build final categories with colors ──
     const palette = [
         { bg: '#dbeafe', border: '#3b82f6', header: '#2563eb', text: '#1e3a5f' },
         { bg: '#dcfce7', border: '#22c55e', header: '#16a34a', text: '#14532d' },
@@ -389,28 +562,26 @@ function autoCategorize(schema) {
 
     for (const rule of rules) {
         const tables = tableNames.filter(t => assigned[t] === rule.name);
-        if (tables.length > 0) {
-            categories[rule.name] = tables;
+        const fkPlaced = unassigned.filter(t => tableToCat[t] === rule.name);
+        const all = [...new Set([...tables, ...fkPlaced])];
+        if (all.length > 0) {
+            categories[rule.name] = all;
             catColors[rule.name] = fixedColors[rule.name] || palette[Object.keys(categories).length % palette.length];
         }
     }
 
-    const largeGroups = Object.entries(prefixGroups).filter(([, ts]) => ts.length >= 2).sort((a, b) => b[1].length - a[1].length);
-
-    for (const [prefix, tables] of largeGroups) {
-        const catName = prefix.charAt(0).toUpperCase() + prefix.slice(1);
-        if (!categories[catName]) {
-            categories[catName] = tables;
+    const sortedCats = Object.entries(prefixCategories).sort((a, b) => b[1].length - a[1].length);
+    for (const [catName, tables] of sortedCats) {
+        const unique = [...new Set(tables)];
+        if (unique.length > 0) {
+            categories[catName] = unique;
             catColors[catName] = palette[Object.keys(categories).length % palette.length];
-        } else {
-            categories[catName].push(...tables);
         }
-        tables.forEach(t => assigned[t] = catName);
     }
 
-    const soloTables = unassigned.filter(t => !assigned[t]);
-    if (soloTables.length > 0) {
-        categories['Other'] = soloTables;
+    const finalSolo = tableNames.filter(t => !assigned[t] && !tableToCat[t]);
+    if (finalSolo.length > 0) {
+        categories['Other'] = finalSolo;
         catColors['Other'] = { bg: '#f5f5f5', border: '#a3a3a3', header: '#737373', text: '#262626' };
     }
 

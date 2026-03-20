@@ -339,8 +339,8 @@ body {
 // --- Auto-categorization engine ---
 function autoCategorize(schema) {
     const tableNames = Object.keys(schema);
-    
-    // Built-in pattern rules (ordered by priority)
+
+    // ── Phase 1: Known pattern rules (highest priority) ──
     const rules = [
         { name: 'Identity & Auth', patterns: [/^aspnet/i, /^role/i, /^user(claim|login|role|token)/i, /identity/i, /auth/i, /permission/i, /claim/i] },
         { name: 'Hangfire (Job Queue)', patterns: [/^hangfire/i] },
@@ -349,7 +349,6 @@ function autoCategorize(schema) {
         { name: 'Audit & Logs', patterns: [/audit/i, /^log/i, /log$/i, /history$/i, /changelog/i, /tracking/i] },
     ];
 
-    // Assign tables matching known patterns
     const assigned = {};
     const unassigned = [];
 
@@ -365,46 +364,226 @@ function autoCategorize(schema) {
         if (!found) unassigned.push(t);
     }
 
-    // Group remaining tables by prefix heuristic
-    // Generic prefixes that don't convey category meaning — strip them
+    // ── Phase 2: Extract meaningful words from table names ──
     const genericPrefixes = new Set(['tbl','vw','sp','fn','usp','udf','dim','fact','tmp','temp','stg','raw','lu','lkp','ref','t','v','p','dbo']);
 
-    // Find common prefixes (split by _ or camelCase boundaries)
-    function getPrefix(name) {
-        if (name.includes('_')) {
-            const parts = name.split('_').filter(Boolean);
-            // Skip leading generic prefix(es) to find the meaningful segment
-            let i = 0;
-            while (i < parts.length - 1 && genericPrefixes.has(parts[i].toLowerCase())) i++;
-            return parts[i].toLowerCase();
-        }
-        // camelCase/PascalCase — split on boundaries
-        const parts = name.replace(/([a-z])([A-Z])/g, '$1_$2').split('_');
+    // Split a table name into meaningful word tokens (lowercase), stripping generic prefixes
+    function tokenize(name) {
+        // First split on underscores
+        let parts = name.split('_').filter(Boolean);
+        // Strip leading generic prefixes
         let i = 0;
         while (i < parts.length - 1 && genericPrefixes.has(parts[i].toLowerCase())) i++;
-        return parts[i].toLowerCase();
+        parts = parts.slice(i);
+        // Then split each remaining part on camelCase/PascalCase boundaries
+        const tokens = [];
+        for (const part of parts) {
+            const sub = part.replace(/([a-z])([A-Z])/g, '$1_$2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2').split('_');
+            tokens.push(...sub);
+        }
+        return tokens.map(p => p.toLowerCase());
     }
 
-    const prefixGroups = {};
-    for (const t of unassigned) {
-        const prefix = getPrefix(t);
-        if (!prefixGroups[prefix]) prefixGroups[prefix] = [];
-        prefixGroups[prefix].push(t);
+    // Find the longest shared prefix (in words) between two token arrays
+    function sharedPrefixLen(a, b) {
+        let n = 0;
+        for (let i = 0; i < Math.min(a.length, b.length); i++) {
+            if (a[i] === b[i]) n++;
+            else break;
+        }
+        return n;
     }
 
-    // Also group by FK relationships — tables that reference the same parent go together
-    const fkTargets = {};
+    // Tokenize all unassigned tables
+    const tableTokens = {};
     for (const t of unassigned) {
-        const def = schema[t];
-        for (const fk of def.foreign_keys) {
-            const target = fk.ref_table;
-            if (!fkTargets[target]) fkTargets[target] = [];
-            if (!fkTargets[target].includes(t)) fkTargets[target].push(t);
+        tableTokens[t] = tokenize(t);
+    }
+
+    // ── Phase 3: Multi-word prefix grouping ──
+    // Build groups by finding the longest shared prefix between tables.
+    // Start by grouping tables that share at least 1 meaningful prefix word.
+    // Then try to merge groups that share longer prefixes.
+
+    // For each pair of tables, compute shared prefix length
+    // Use a union-find to merge tables with shared prefixes
+    const parent = {};
+    const groupPrefix = {}; // track the shared prefix words for each group root
+
+    function find(x) {
+        if (parent[x] !== x) parent[x] = find(parent[x]);
+        return parent[x];
+    }
+    function union(a, b) {
+        const ra = find(a), rb = find(b);
+        if (ra !== rb) parent[ra] = rb;
+    }
+
+    for (const t of unassigned) parent[t] = t;
+
+    // Group tables sharing at least 1 prefix word
+    for (let i = 0; i < unassigned.length; i++) {
+        for (let j = i + 1; j < unassigned.length; j++) {
+            const a = unassigned[i], b = unassigned[j];
+            const shared = sharedPrefixLen(tableTokens[a], tableTokens[b]);
+            if (shared >= 1) {
+                union(a, b);
+            }
         }
     }
 
-    // Merge prefix groups into categories
-    // Category color palette
+    // Collect groups and determine best category name for each
+    const prefixGroupsMap = {};
+    for (const t of unassigned) {
+        const root = find(t);
+        if (!prefixGroupsMap[root]) prefixGroupsMap[root] = [];
+        prefixGroupsMap[root].push(t);
+    }
+
+    // For each group, find the longest common prefix among all members
+    function groupCommonPrefix(tables) {
+        if (tables.length === 0) return [];
+        let common = tableTokens[tables[0]].slice();
+        for (let i = 1; i < tables.length; i++) {
+            const tokens = tableTokens[tables[i]];
+            let n = 0;
+            for (let j = 0; j < Math.min(common.length, tokens.length); j++) {
+                if (common[j] === tokens[j]) n++;
+                else break;
+            }
+            common = common.slice(0, n);
+            if (common.length === 0) break;
+        }
+        return common;
+    }
+
+    // Build prefix-based categories (before FK refinement)
+    const prefixCategories = {}; // catName → [tables]
+    const tableToCat = {}; // table → catName (for prefix phase)
+
+    for (const [, tables] of Object.entries(prefixGroupsMap)) {
+        if (tables.length < 2) continue; // solo tables handled later
+        const common = groupCommonPrefix(tables);
+        const catName = common.length > 0
+            ? common.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+            : null;
+        if (catName) {
+            if (!prefixCategories[catName]) prefixCategories[catName] = [];
+            prefixCategories[catName].push(...tables);
+            for (const t of tables) tableToCat[t] = catName;
+        }
+    }
+
+    // ── Phase 4: FK relationship refinement ──
+    // Build a bidirectional FK adjacency map (table → set of related tables)
+    const fkNeighbors = {};
+    for (const t of tableNames) {
+        if (!fkNeighbors[t]) fkNeighbors[t] = new Set();
+        const def = schema[t];
+        for (const fk of def.foreign_keys) {
+            const ref = fk.ref_table;
+            if (!fkNeighbors[ref]) fkNeighbors[ref] = new Set();
+            fkNeighbors[t].add(ref);
+            fkNeighbors[ref].add(t);
+        }
+    }
+
+    // 4a: Merge small prefix groups that are FK-connected to larger groups
+    // If a small group (< 3 tables) has FK connections to a larger group, absorb it
+    const catSizes = {};
+    for (const [cat, tables] of Object.entries(prefixCategories)) {
+        catSizes[cat] = tables.length;
+    }
+
+    for (const [cat, tables] of Object.entries(prefixCategories)) {
+        if (tables.length >= 3) continue; // only merge small groups
+        // Count FK connections to each other category
+        const connectionCount = {};
+        for (const t of tables) {
+            for (const neighbor of (fkNeighbors[t] || [])) {
+                const neighborCat = tableToCat[neighbor] || assigned[neighbor];
+                if (neighborCat && neighborCat !== cat) {
+                    connectionCount[neighborCat] = (connectionCount[neighborCat] || 0) + 1;
+                }
+            }
+        }
+        // Find the most-connected category
+        let bestCat = null, bestCount = 0;
+        for (const [targetCat, count] of Object.entries(connectionCount)) {
+            if (count > bestCount && (catSizes[targetCat] || 0) >= 3) {
+                bestCat = targetCat;
+                bestCount = count;
+            }
+        }
+        if (bestCat && bestCount >= tables.length) {
+            // Absorb into the larger group
+            prefixCategories[bestCat].push(...tables);
+            for (const t of tables) tableToCat[t] = bestCat;
+            delete prefixCategories[cat];
+        }
+    }
+
+    // 4b: Place solo unassigned tables into a category if they have FK connections
+    const soloTables = unassigned.filter(t => !tableToCat[t]);
+    const remainingSolo = [];
+
+    for (const t of soloTables) {
+        // Check FK neighbors — find the most common category among them
+        const catVotes = {};
+        for (const neighbor of (fkNeighbors[t] || [])) {
+            const neighborCat = tableToCat[neighbor] || assigned[neighbor];
+            if (neighborCat) {
+                catVotes[neighborCat] = (catVotes[neighborCat] || 0) + 1;
+            }
+        }
+        let bestCat = null, bestVotes = 0;
+        for (const [cat, votes] of Object.entries(catVotes)) {
+            if (votes > bestVotes) { bestCat = cat; bestVotes = votes; }
+        }
+        if (bestCat) {
+            tableToCat[t] = bestCat;
+            if (prefixCategories[bestCat]) prefixCategories[bestCat].push(t);
+            else {
+                // It's a known rule category — we'll add it in the final build
+            }
+        } else {
+            remainingSolo.push(t);
+        }
+    }
+
+    // 4c: Among remaining solos, try to form FK-connected clusters
+    const soloVisited = new Set();
+    for (const t of remainingSolo) {
+        if (soloVisited.has(t)) continue;
+        // BFS to find connected solo tables
+        const cluster = [];
+        const queue = [t];
+        soloVisited.add(t);
+        while (queue.length > 0) {
+            const curr = queue.shift();
+            cluster.push(curr);
+            for (const neighbor of (fkNeighbors[curr] || [])) {
+                if (!soloVisited.has(neighbor) && remainingSolo.includes(neighbor)) {
+                    soloVisited.add(neighbor);
+                    queue.push(neighbor);
+                }
+            }
+        }
+        if (cluster.length >= 2) {
+            // Name the cluster after the table with the most FK connections in the cluster
+            const hub = cluster.reduce((best, c) => {
+                const conns = (fkNeighbors[c] || new Set()).size;
+                return conns > (fkNeighbors[best] || new Set()).size ? c : best;
+            });
+            const hubTokens = tableTokens[hub] || tokenize(hub);
+            const catName = hubTokens.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            const finalName = prefixCategories[catName] ? catName + ' (Related)' : catName;
+            prefixCategories[finalName] = cluster;
+            for (const c of cluster) tableToCat[c] = finalName;
+        }
+    }
+
+    // ── Phase 5: Build final categories with colors ──
     const palette = [
         { bg: '#dbeafe', border: '#3b82f6', header: '#2563eb', headerText: '#fff' },
         { bg: '#dcfce7', border: '#22c55e', header: '#16a34a', headerText: '#fff' },
@@ -423,7 +602,6 @@ function autoCategorize(schema) {
         { bg: '#f0fdfa', border: '#2dd4bf', header: '#14b8a6', headerText: '#fff' },
     ];
 
-    // Fixed colors for known categories
     const fixedColors = {
         'Identity & Auth': { bg: '#fce7f3', border: '#ec4899', header: '#db2777', headerText: '#fff' },
         'Hangfire (Job Queue)': { bg: '#fff7ed', border: '#f97316', header: '#ea580c', headerText: '#fff' },
@@ -432,41 +610,36 @@ function autoCategorize(schema) {
         'Audit & Logs': { bg: '#f3e8ff', border: '#a855f7', header: '#9333ea', headerText: '#fff' },
     };
 
-    // Build final categories
     const categories = {};
     const categoryColors = {};
 
-    // Add known categories first
+    // Add known rule-based categories first
     for (const rule of rules) {
         const tables = tableNames.filter(t => assigned[t] === rule.name);
-        if (tables.length > 0) {
-            categories[rule.name] = tables;
+        // Also include any FK-placed tables into rule categories
+        const fkPlaced = unassigned.filter(t => tableToCat[t] === rule.name);
+        const all = [...new Set([...tables, ...fkPlaced])];
+        if (all.length > 0) {
+            categories[rule.name] = all;
             categoryColors[rule.name] = fixedColors[rule.name] || palette[Object.keys(categories).length % palette.length];
         }
     }
 
-    // Group unassigned by prefix — groups with 2+ tables get their own category
-    const largeGroups = Object.entries(prefixGroups).filter(([, ts]) => ts.length >= 2).sort((a, b) => b[1].length - a[1].length);
-    const soloTables = [];
-
-    for (const [prefix, tables] of largeGroups) {
-        // Generate a nice category name from the prefix
-        const catName = prefix.charAt(0).toUpperCase() + prefix.slice(1);
-        if (!categories[catName]) {
-            categories[catName] = tables;
+    // Add auto-detected prefix/FK categories, sorted by size (largest first)
+    const sortedCats = Object.entries(prefixCategories).sort((a, b) => b[1].length - a[1].length);
+    for (const [catName, tables] of sortedCats) {
+        // Deduplicate
+        const unique = [...new Set(tables)];
+        if (unique.length > 0) {
+            categories[catName] = unique;
             categoryColors[catName] = palette[Object.keys(categories).length % palette.length];
-        } else {
-            categories[catName].push(...tables);
         }
-        tables.forEach(t => assigned[t] = catName);
     }
 
-    // Solo tables go into "Other"
-    for (const t of unassigned) {
-        if (!assigned[t]) soloTables.push(t);
-    }
-    if (soloTables.length > 0) {
-        categories['Other'] = soloTables;
+    // Remaining unplaced tables go into "Other"
+    const finalSolo = tableNames.filter(t => !assigned[t] && !tableToCat[t]);
+    if (finalSolo.length > 0) {
+        categories['Other'] = finalSolo;
         categoryColors['Other'] = { bg: '#f5f5f5', border: '#a3a3a3', header: '#737373', headerText: '#fff' };
     }
 
@@ -475,7 +648,7 @@ function autoCategorize(schema) {
     for (const [cat, tables] of Object.entries(categories)) {
         for (const t of tables) tableCategory[t] = cat;
     }
-    // Safety: any remaining
+    // Safety net: any table still missing gets "Other"
     for (const t of tableNames) {
         if (!tableCategory[t]) {
             tableCategory[t] = 'Other';
