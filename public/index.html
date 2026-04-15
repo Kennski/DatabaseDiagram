@@ -543,6 +543,37 @@ body {
 </div>
 
 <script>
+(async function checkShareHash() {
+    const hash = window.location.hash;
+    if (!hash.startsWith('#data=')) return;
+
+    const encoded = decodeURIComponent(hash.slice(6));
+    try {
+        let json;
+        if (encoded.startsWith('gz:')) {
+            const binary = atob(encoded.slice(3));
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const blob = new Blob([bytes]);
+            const ds = new DecompressionStream('gzip');
+            const decompressedStream = blob.stream().pipeThrough(ds);
+            json = await new Response(decompressedStream).text();
+        } else if (encoded.startsWith('raw:')) {
+            json = decodeURIComponent(escape(atob(encoded.slice(4))));
+        } else {
+            return;
+        }
+
+        const data = JSON.parse(json);
+        if (!data.schema) return;
+
+        sessionStorage.setItem('dbdiagram_data', json);
+        window.location.href = '/dynamic-list.html';
+    } catch (err) {
+        console.error('Failed to load shared schema:', err);
+    }
+})();
+
 // Tab switching
 document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
