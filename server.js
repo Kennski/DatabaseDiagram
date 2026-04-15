@@ -47,7 +47,9 @@ function buildSchema(tables, columns, primaryKeys, indexes, foreignKeys) {
         if (!indexMap[key]) {
             indexMap[key] = { table: idx.TABLE_NAME, name: idx.INDEX_NAME, columns: [], unique: !!idx.IS_UNIQUE };
         }
-        indexMap[key].columns.push(idx.COLUMN_NAME);
+        if (!indexMap[key].columns.includes(idx.COLUMN_NAME)) {
+            indexMap[key].columns.push(idx.COLUMN_NAME);
+        }
     }
     for (const idx of Object.values(indexMap)) {
         schema[idx.table].keys.push({ name: idx.name, columns: idx.columns, unique: idx.unique });
@@ -64,8 +66,11 @@ function buildSchema(tables, columns, primaryKeys, indexes, foreignKeys) {
                 actions: `ON UPDATE ${fk.UPDATE_RULE || 'NO ACTION'} ON DELETE ${fk.DELETE_RULE || 'NO ACTION'}`
             };
         }
-        fkMap[key].columns.push(fk.COLUMN_NAME);
-        fkMap[key].ref_columns.push(fk.REFERENCED_COLUMN_NAME);
+        // Deduplicate: MariaDB INFORMATION_SCHEMA joins can return duplicate FK rows
+        if (!fkMap[key].columns.includes(fk.COLUMN_NAME)) {
+            fkMap[key].columns.push(fk.COLUMN_NAME);
+            fkMap[key].ref_columns.push(fk.REFERENCED_COLUMN_NAME);
+        }
     }
     for (const fk of Object.values(fkMap)) {
         schema[fk.table].foreign_keys.push({
