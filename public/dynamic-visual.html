@@ -1461,7 +1461,8 @@ function downloadSVG() {
     const pad = 60;
     minX -= pad; minY -= pad; maxX += pad; maxY += pad;
     const w = maxX - minX;
-    const h = maxY - minY;
+    const footerHeight = 40;
+    const h = maxY - minY + footerHeight;
 
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${minX} ${minY} ${w} ${h}" font-family="Segoe UI, sans-serif">\n`;
     svg += `<rect x="${minX}" y="${minY}" width="${w}" height="${h}" fill="#0f172a"/>\n`;
@@ -1518,12 +1519,22 @@ function downloadSVG() {
         }
     }
 
+    // Footer bar
+    const footerY = maxY + 30;
+    svg += `<rect x="${minX}" y="${footerY}" width="${w}" height="30" fill="#1e293b"/>\n`;
+    svg += `<text x="${minX + 12}" y="${footerY + 20}" fill="#94a3b8" font-size="11">${esc(window._dbName || 'Database')} — ${Object.keys(window._schema || {}).length} tables — Generated ${new Date().toISOString().split('T')[0]} — DatabaseDiagram</text>\n`;
+
+    // Embed schema metadata
+    const schemaJSON = sessionStorage.getItem('dbdiagram_data') || '';
+    svg += `<metadata><dbdiagram-schema>${schemaJSON.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</dbdiagram-schema></metadata>\n`;
+
     svg += '</svg>';
 
     const blob = new Blob([svg], { type: 'image/svg+xml' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = window._dbName.replace(/[^a-zA-Z0-9]/g, '_') + '_Diagram.svg';
+    const svgDate = new Date().toISOString().split('T')[0];
+    a.download = `schema-${(window._dbName || 'database').replace(/[^a-zA-Z0-9]/g, '_')}-${svgDate}.svg`;
     a.click();
     URL.revokeObjectURL(a.href);
     showToast('SVG downloaded!');
