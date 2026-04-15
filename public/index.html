@@ -370,6 +370,9 @@ body {
 .global-nav { position: sticky; top: 0; z-index: 100; background: #0f172a; border-bottom: 1px solid #1e293b; padding: 0 20px; display: flex; align-items: center; height: 50px; }
 .global-nav .app-name { color: #f8fafc; font-size: 15px; font-weight: 700; text-decoration: none; }
 .global-nav .app-name:hover { color: #818cf8; }
+
+.auto-detected-label { color: #6366f1; font-size: 12px; margin-left: 8px; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 </style>
 </head>
 <body>
@@ -503,6 +506,7 @@ body {
                         <option value="postgres">PostgreSQL</option>
                         <option value="mssql">SQL Server</option>
                     </select>
+                    <span id="dialectLabel" class="auto-detected-label" style="display:none">(auto-detected)</span>
                 </div>
             </div>
 
@@ -636,6 +640,39 @@ function extractSVGMetadata(svgText) {
     }
 })();
 
+function detectSQLDialect(sql) {
+    if (!sql || sql.length < 20) return 'auto';
+    const scores = { mysql: 0, postgres: 0, mssql: 0 };
+
+    // MySQL signals
+    scores.mysql += (sql.match(/`[^`]+`/g) || []).length;
+    if (/ENGINE\s*=/i.test(sql)) scores.mysql += 2;
+    if (/AUTO_INCREMENT/i.test(sql)) scores.mysql += 2;
+    if (/\bUNSIGNED\b/i.test(sql)) scores.mysql += 1;
+    if (/\bTINYINT\b/i.test(sql)) scores.mysql += 1;
+
+    // PostgreSQL signals
+    if (/\b(big)?serial\b/i.test(sql)) scores.postgres += 2;
+    scores.postgres += (sql.match(/::/g) || []).length;
+    if (/WITHOUT\s+OIDS/i.test(sql)) scores.postgres += 2;
+    if (/\bBOOLEAN\b/i.test(sql)) scores.postgres += 1;
+    if (/\bTEXT\b/i.test(sql) && !/\bTINYTEXT\b/i.test(sql) && !/\bLONGTEXT\b/i.test(sql)) scores.postgres += 1;
+
+    // SQL Server signals
+    scores.mssql += (sql.match(/\[[^\]]+\]/g) || []).length;
+    if (/IDENTITY\s*\(/i.test(sql)) scores.mssql += 2;
+    if (/\bGO\b/m.test(sql)) scores.mssql += 2;
+    if (/\bNVARCHAR\b/i.test(sql)) scores.mssql += 1;
+    if (/\bNCHAR\b/i.test(sql)) scores.mssql += 1;
+    if (/\bCLUSTERED\b/i.test(sql)) scores.mssql += 1;
+
+    let best = 'auto', bestScore = 0;
+    for (const [dialect, score] of Object.entries(scores)) {
+        if (score > bestScore) { bestScore = score; best = dialect; }
+    }
+    return bestScore >= 2 ? best : 'auto';
+}
+
 // Tab switching
 document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -702,7 +739,11 @@ fileInput.addEventListener('change', (e) => {
         fileName.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
         uploadArea.classList.add('has-file');
         const reader = new FileReader();
-        reader.onload = (ev) => { uploadedSQL = ev.target.result; };
+        reader.onload = (ev) => {
+            uploadedSQL = ev.target.result;
+            userOverrodeDialect = false;
+            runDialectDetection(ev.target.result);
+        };
         reader.readAsText(file);
     }
 });
@@ -740,6 +781,11 @@ document.getElementById('db-type').addEventListener('change', function() {
 // SQL dialect selector → upload guide
 const uploadGuideIds = ['upload-guide-mysql', 'upload-guide-postgres', 'upload-guide-mssql'];
 document.getElementById('sql-dialect').addEventListener('change', function() {
+    if (!this._autoTriggered) {
+        userOverrodeDialect = true;
+        document.getElementById('dialectLabel').style.display = 'none';
+    }
+    this._autoTriggered = false;
     const guideBox = document.getElementById('guide-upload');
     uploadGuideIds.forEach(id => document.getElementById(id).style.display = 'none');
     if (this.value === 'auto') {
@@ -749,6 +795,32 @@ document.getElementById('sql-dialect').addEventListener('change', function() {
         const target = this.value === 'postgres' ? 'upload-guide-postgres' : this.value === 'mssql' ? 'upload-guide-mssql' : 'upload-guide-mysql';
         document.getElementById(target).style.display = 'block';
     }
+});
+
+let userOverrodeDialect = false;
+let detectDebounceTimer = null;
+
+function runDialectDetection(sql) {
+    if (userOverrodeDialect) return;
+    const detected = detectSQLDialect(sql);
+    const select = document.getElementById('sql-dialect');
+    const label = document.getElementById('dialectLabel');
+    if (detected !== 'auto') {
+        select.value = detected;
+        label.style.display = 'inline';
+        select._autoTriggered = true;
+        select.dispatchEvent(new Event('change'));
+    } else {
+        label.style.display = 'none';
+    }
+}
+
+// Debounced detection on SQL paste textarea
+document.getElementById('sql-paste').addEventListener('input', function() {
+    clearTimeout(detectDebounceTimer);
+    userOverrodeDialect = false;
+    const text = this.value;
+    detectDebounceTimer = setTimeout(() => runDialectDetection(text), 300);
 });
 
 // Recent connections (localStorage)
