@@ -23,6 +23,8 @@ function buildSchema(tables, columns, primaryKeys, indexes, foreignKeys) {
 
     for (const col of columns) {
         if (!schema[col.TABLE_NAME]) continue;
+        // Deduplicate: skip if column name already exists for this table
+        if (schema[col.TABLE_NAME].columns.some(c => c.name === col.COLUMN_NAME)) continue;
         schema[col.TABLE_NAME].columns.push({
             name: col.COLUMN_NAME,
             type: col.COLUMN_TYPE,
@@ -33,7 +35,9 @@ function buildSchema(tables, columns, primaryKeys, indexes, foreignKeys) {
 
     for (const pk of primaryKeys) {
         if (!schema[pk.TABLE_NAME]) continue;
-        schema[pk.TABLE_NAME].primary_keys.push(pk.COLUMN_NAME);
+        if (!schema[pk.TABLE_NAME].primary_keys.includes(pk.COLUMN_NAME)) {
+            schema[pk.TABLE_NAME].primary_keys.push(pk.COLUMN_NAME);
+        }
     }
 
     const indexMap = {};
@@ -453,6 +457,33 @@ function parseSqlDump(sql) {
         }
 
         schema[tableName] = table;
+    }
+
+    // Parse ALTER TABLE ... ADD FOREIGN KEY statements
+    const alterFkRegex = /ALTER\s+TABLE\s+(?:`[^`]+`|"[^"]+"|\[[^\]]+\]|\w+)\s+ADD\s+(?:CONSTRAINT\s+(?:`[^`]+`|"[^"]+"|\[[^\]]+\]|\w+)\s+)?FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+(?:(?:`[^`]+`|"[^"]+"|\[[^\]]+\]|\w+)\.)?(`[^`]+`|"[^"]+"|\[[^\]]+\]|\w+)\s*\(([^)]+)\)([^;]*)/gi;
+    const alterTableNameRegex = /ALTER\s+TABLE\s+(`[^`]+`|"[^"]+"|\[[^\]]+\]|\w+)/i;
+
+    let alterMatch;
+    while ((alterMatch = alterFkRegex.exec(sql)) !== null) {
+        const fullMatch = alterMatch[0];
+        const tnMatch = fullMatch.match(alterTableNameRegex);
+        if (!tnMatch) continue;
+        const tName = unquoteId(tnMatch[1]).toLowerCase();
+        if (!schema[tName]) continue;
+
+        const fkCols = alterMatch[1].split(',').map(c => unquoteId(c.trim()));
+        const refTable = unquoteId(alterMatch[2]).toLowerCase();
+        const refCols = alterMatch[3].split(',').map(c => unquoteId(c.trim()));
+        const actions = alterMatch[4] ? alterMatch[4].trim().replace(/,\s*$/, '') : '';
+        const fkName = `fk_${tName}_${schema[tName].foreign_keys.length}`;
+
+        schema[tName].foreign_keys.push({
+            name: fkName,
+            columns: fkCols,
+            ref_table: refTable,
+            ref_columns: refCols,
+            actions
+        });
     }
 
     return schema;
