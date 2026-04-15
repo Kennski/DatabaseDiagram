@@ -1008,7 +1008,99 @@ async function shareLink() {
 }
 function downloadHTML() { showToast('HTML export — coming soon'); }
 function downloadPDF() { showToast('PDF export — coming soon'); }
-function downloadMarkdown() { showToast('Markdown export — coming soon'); }
+function downloadMarkdown() {
+    const raw = sessionStorage.getItem('dbdiagram_data');
+    if (!raw) { showToast('No schema data loaded'); return; }
+    const data = JSON.parse(raw);
+    const schema = data.schema;
+    const dbName = data.database || 'Database';
+    const version = data.version || '';
+    const tableCount = Object.keys(schema).length;
+    const date = new Date().toISOString().split('T')[0];
+
+    const { categories, tableCategory } = autoCategorize(schema);
+
+    let md = `# Database Schema: ${dbName}\n`;
+    md += `> Generated on ${date} | ${tableCount} tables | ${version}\n\n`;
+
+    md += `## Table of Contents\n`;
+    for (const [cat, tables] of Object.entries(categories)) {
+        md += `- **${cat}**\n`;
+        for (const t of tables) md += `  - [${t}](#${t.toLowerCase().replace(/[^a-z0-9]+/g, '-')})\n`;
+    }
+    md += `\n---\n\n`;
+
+    for (const [cat, tables] of Object.entries(categories)) {
+        md += `## ${cat}\n\n`;
+        for (const t of tables) {
+            const tbl = schema[t];
+            if (!tbl) continue;
+            md += `### ${t}\n\n`;
+            md += `| Column | Type | Nullable | Key |\n`;
+            md += `|--------|------|----------|-----|\n`;
+            for (const col of tbl.columns) {
+                const isPK = tbl.primary_keys.includes(col.name);
+                const isFK = tbl.foreign_keys.some(fk => fk.columns.includes(col.name));
+                const key = isPK ? 'PK' : isFK ? 'FK' : '';
+                md += `| ${col.name} | ${col.type} | ${col.nullable ? 'YES' : 'NO'} | ${key} |\n`;
+            }
+            md += `\n`;
+            if (tbl.keys.length > 0) {
+                md += `**Indexes:**\n`;
+                for (const k of tbl.keys) {
+                    md += `- ${k.name} (${k.columns.join(', ')})${k.unique ? ' UNIQUE' : ''}\n`;
+                }
+                md += `\n`;
+            }
+            if (tbl.foreign_keys.length > 0) {
+                md += `**Foreign Keys:**\n`;
+                for (const fk of tbl.foreign_keys) {
+                    md += `- \`${fk.columns.join(', ')}\` → \`${fk.ref_table}.${fk.ref_columns.join(', ')}\``;
+                    if (fk.actions) md += ` (${fk.actions})`;
+                    md += `\n`;
+                }
+                md += `\n`;
+            }
+            md += `---\n\n`;
+        }
+    }
+
+    md += generateAnalysisSummaryMd(schema);
+
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `schema-${dbName.replace(/[^a-zA-Z0-9]/g, '_')}-${date}.md`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('Markdown downloaded!');
+}
+
+function generateAnalysisSummaryMd(schema) {
+    let errors = 0, warnings = 0;
+    for (const [name, tbl] of Object.entries(schema)) {
+        if (tbl.primary_keys.length === 0) errors++;
+        for (const fk of tbl.foreign_keys) {
+            if (!schema[fk.ref_table] && !schema[fk.ref_table?.toLowerCase()]) errors++;
+        }
+        if (tbl.columns.length > 30) warnings++;
+        const hasFKIn = Object.values(schema).some(t => t.foreign_keys.some(f => f.ref_table === name || f.ref_table === name.toLowerCase()));
+        const hasFKOut = tbl.foreign_keys.length > 0;
+        if (!hasFKIn && !hasFKOut) warnings++;
+    }
+    const score = Math.max(0, 100 - errors * 15 - warnings * 5);
+    let grade = 'F';
+    if (score >= 90) grade = 'A';
+    else if (score >= 75) grade = 'B';
+    else if (score >= 60) grade = 'C';
+    else if (score >= 40) grade = 'D';
+
+    let md = `## Schema Analysis Summary\n\n`;
+    md += `**Grade: ${grade}** (Score: ${score}/100)\n\n`;
+    md += `- ${errors} error(s) found\n`;
+    md += `- ${warnings} warning(s) found\n`;
+    return md;
+}
 
 // --- Init ---
 render();
