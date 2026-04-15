@@ -366,9 +366,17 @@ body {
 @keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 .toast.fade-out { animation: toastOut 0.3s ease forwards; }
 @keyframes toastOut { to { opacity: 0; transform: translateY(12px); } }
+
+.global-nav { position: sticky; top: 0; z-index: 100; background: #0f172a; border-bottom: 1px solid #1e293b; padding: 0 20px; display: flex; align-items: center; height: 50px; }
+.global-nav .app-name { color: #f8fafc; font-size: 15px; font-weight: 700; text-decoration: none; }
+.global-nav .app-name:hover { color: #818cf8; }
 </style>
 </head>
 <body>
+
+<nav class="global-nav">
+    <a href="/" class="app-name">DatabaseDiagram</a>
+</nav>
 
 <div class="container">
     <div class="logo">
