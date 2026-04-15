@@ -337,6 +337,19 @@ body {
 @keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 .toast.fade-out { animation: toastOut 0.3s ease forwards; }
 @keyframes toastOut { to { opacity: 0; transform: translateY(12px); } }
+
+/* Export dropdown */
+.export-wrapper { position: relative; display: inline-block; }
+.export-btn { background: linear-gradient(135deg, #6366f1, #4f46e5); color: #fff; border: none; padding: 8px 18px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.export-btn:hover { background: linear-gradient(135deg, #818cf8, #6366f1); }
+.export-btn .arrow { font-size: 10px; transition: transform 0.2s; }
+.export-wrapper.open .export-btn .arrow { transform: rotate(180deg); }
+.export-menu { display: none; position: absolute; right: 0; top: calc(100% + 6px); background: #1e293b; border: 1px solid #334155; border-radius: 10px; min-width: 220px; box-shadow: 0 8px 30px rgba(0,0,0,0.4); z-index: 1000; overflow: hidden; }
+.export-wrapper.open .export-menu { display: block; }
+.export-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; background: none; border: none; color: #e2e8f0; font-size: 14px; cursor: pointer; text-align: left; }
+.export-menu button:hover { background: #334155; }
+.export-menu button .icon { width: 20px; text-align: center; font-size: 16px; }
+.export-menu hr { border: none; border-top: 1px solid #334155; margin: 4px 0; }
 </style>
 </head>
 <body>
@@ -762,6 +775,17 @@ function render() {
             <a href="/dynamic-visual.html" class="nav-btn">Visual Diagram →</a>
             <a href="/dynamic-analysis.html" class="nav-btn">🔍 Analysis →</a>
             <a href="/" class="nav-btn" style="background:linear-gradient(135deg,#475569,#334155)">← New Connection</a>
+            <div class="export-wrapper" id="exportWrapper">
+                <button class="export-btn" onclick="document.getElementById('exportWrapper').classList.toggle('open')">
+                    <span>Export / Share</span><span class="arrow">▼</span>
+                </button>
+                <div class="export-menu">
+                    <button onclick="shareLink()"><span class="icon">🔗</span> Share Link</button>
+                    <button onclick="downloadHTML()"><span class="icon">📄</span> Download HTML</button>
+                    <button onclick="downloadPDF()"><span class="icon">📑</span> Download PDF</button>
+                    <button onclick="downloadMarkdown()"><span class="icon">📝</span> Download Markdown</button>
+                </div>
+            </div>
         </div>
     </div>
     <div class="content">`;
@@ -943,6 +967,17 @@ function filterCategory(cat, btn) {
         }
     });
 }
+
+// --- Export dropdown ---
+document.addEventListener('click', (e) => {
+    const wrapper = document.getElementById('exportWrapper');
+    if (wrapper && !wrapper.contains(e.target)) wrapper.classList.remove('open');
+});
+
+function shareLink() { showToast('Share Link — coming soon'); }
+function downloadHTML() { showToast('HTML export — coming soon'); }
+function downloadPDF() { showToast('PDF export — coming soon'); }
+function downloadMarkdown() { showToast('Markdown export — coming soon'); }
 
 // --- Init ---
 render();
