@@ -1273,6 +1273,54 @@ function minimapNav(e) {
     });
 })();
 
+// --- PNG metadata utilities ---
+function crc32(bytes) {
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) {
+        crc ^= bytes[i];
+        for (let j = 0; j < 8; j++) {
+            crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0);
+        }
+    }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function insertPNGTextChunk(pngBlob, keyword, text) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const data = new Uint8Array(reader.result);
+            const keyBytes = new TextEncoder().encode(keyword);
+            const textBytes = new TextEncoder().encode(text);
+            const chunkData = new Uint8Array(keyBytes.length + 1 + textBytes.length);
+            chunkData.set(keyBytes, 0);
+            chunkData[keyBytes.length] = 0;
+            chunkData.set(textBytes, keyBytes.length + 1);
+
+            const chunkType = new Uint8Array([0x74, 0x45, 0x58, 0x74]); // "tEXt"
+            const crcInput = new Uint8Array(chunkType.length + chunkData.length);
+            crcInput.set(chunkType, 0);
+            crcInput.set(chunkData, chunkType.length);
+            const crc = crc32(crcInput);
+
+            const chunk = new Uint8Array(12 + chunkData.length);
+            const view = new DataView(chunk.buffer);
+            view.setUint32(0, chunkData.length);
+            chunk.set(chunkType, 4);
+            chunk.set(chunkData, 8);
+            view.setUint32(8 + chunkData.length, crc);
+
+            const result = new Uint8Array(data.length + chunk.length);
+            result.set(data.subarray(0, data.length - 12), 0);
+            result.set(chunk, data.length - 12);
+            result.set(data.subarray(data.length - 12), data.length - 12 + chunk.length);
+
+            resolve(new Blob([result], { type: 'image/png' }));
+        };
+        reader.readAsArrayBuffer(pngBlob);
+    });
+}
+
 // --- Download PNG ---
 function downloadPNG() {
     showToast('Rendering PNG... please wait');
@@ -1286,8 +1334,9 @@ function downloadPNG() {
     }
     const pad = 60;
     minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+    const pngFooterHeight = 60;
     const cw = maxX - minX;
-    const ch = maxY - minY;
+    const ch = maxY - minY + pngFooterHeight;
 
     const c = document.createElement('canvas');
     c.width = cw * 2;
@@ -1407,15 +1456,22 @@ function downloadPNG() {
         }
     }
 
-    // Watermark
-    ctx.fillStyle = '#334155';
-    ctx.font = '14px Segoe UI, sans-serif';
-    ctx.fillText(window._dbName + ' Database Diagram — Generated ' + new Date().toLocaleDateString(), minX + 20, maxY - 20);
+    // Footer bar
+    const pngFooterY = maxY + 10;
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(minX, pngFooterY, cw, 40);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '12px Segoe UI, sans-serif';
+    const pngDate = new Date().toISOString().split('T')[0];
+    ctx.fillText(`${window._dbName || 'Database'} — ${Object.keys(window._schema || {}).length} tables — Generated ${pngDate} — DatabaseDiagram`, minX + 12, pngFooterY + 25);
 
-    c.toBlob(blob => {
+    c.toBlob(async (blob) => {
+        const schemaJSON = sessionStorage.getItem('dbdiagram_data') || '';
+        const enhancedBlob = await insertPNGTextChunk(blob, 'DatabaseDiagram', schemaJSON);
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = window._dbName.replace(/[^a-zA-Z0-9]/g, '_') + '_Diagram.png';
+        a.href = URL.createObjectURL(enhancedBlob);
+        const date = new Date().toISOString().split('T')[0];
+        a.download = `schema-${(window._dbName || 'database').replace(/[^a-zA-Z0-9]/g, '_')}-${date}.png`;
         a.click();
         URL.revokeObjectURL(a.href);
         showToast('PNG downloaded!');
