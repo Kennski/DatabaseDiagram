@@ -15,9 +15,23 @@ body {
     width: 100vw;
 }
 
+/* Global nav bar */
+.global-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 1001; background: #0f172a; border-bottom: 1px solid #1e293b; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 50px; }
+.nav-left { display: flex; align-items: center; gap: 12px; }
+.nav-left .app-name { color: #f8fafc; font-size: 15px; font-weight: 700; text-decoration: none; }
+.nav-left .app-name:hover { color: #818cf8; }
+.db-badge { background: #1e293b; border: 1px solid #334155; border-radius: 20px; padding: 4px 12px; font-size: 12px; color: #94a3b8; white-space: nowrap; }
+.nav-center { display: flex; align-items: center; gap: 4px; }
+.nav-tab { color: #94a3b8; text-decoration: none; font-size: 13px; font-weight: 500; padding: 14px 16px; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; }
+.nav-tab:hover { color: #e2e8f0; }
+.nav-tab.active { color: #e2e8f0; border-bottom-color: #6366f1; }
+.nav-right { display: flex; align-items: center; gap: 10px; }
+.nav-new-btn { border: 1px solid #334155; background: transparent; color: #94a3b8; border-radius: 8px; padding: 6px 14px; font-size: 12px; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.nav-new-btn:hover { border-color: #6366f1; color: #e2e8f0; }
+
 .toolbar {
     position: fixed;
-    top: 0; left: 0; right: 0;
+    top: 50px; left: 0; right: 0;
     z-index: 1000;
     background: rgba(15, 23, 42, 0.95);
     backdrop-filter: blur(8px);
@@ -27,18 +41,6 @@ body {
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
-}
-.toolbar h1 {
-    font-size: 16px;
-    font-weight: 700;
-    color: #f8fafc;
-    margin-right: 8px;
-    white-space: nowrap;
-}
-.toolbar .sep {
-    width: 1px;
-    height: 24px;
-    background: #334155;
 }
 .btn {
     background: #1e293b;
@@ -65,16 +67,10 @@ body {
     min-width: 45px;
     text-align: center;
 }
-.nav-link {
-    color: #38bdf8;
-    text-decoration: none;
-    font-size: 12px;
-}
-.nav-link:hover { text-decoration: underline; }
 
 .canvas-wrapper {
     position: fixed;
-    top: 50px;
+    top: 100px;
     left: 0; right: 0; bottom: 0;
     overflow: hidden;
     cursor: grab;
@@ -297,6 +293,34 @@ body {
 </style>
 </head>
 <body>
+<nav class="global-nav">
+    <div class="nav-left">
+        <a href="/" class="app-name">DatabaseDiagram</a>
+        <span class="db-badge" id="dbBadge"></span>
+    </div>
+    <div class="nav-center">
+        <a href="/dynamic-list.html" class="nav-tab">Table List</a>
+        <a href="/dynamic-visual.html" class="nav-tab active">Visual Diagram</a>
+        <a href="/dynamic-analysis.html" class="nav-tab">Analysis</a>
+    </div>
+    <div class="nav-right">
+        <div class="export-wrapper" id="exportWrapper">
+            <button class="export-btn" onclick="document.getElementById('exportWrapper').classList.toggle('open')">
+                <span>Export / Share</span><span class="arrow">▼</span>
+            </button>
+            <div class="export-menu">
+                <button onclick="shareLink()"><span class="icon">🔗</span> Share Link</button>
+                <button onclick="downloadHTML()"><span class="icon">📄</span> Download HTML</button>
+                <button onclick="downloadPDF()"><span class="icon">📑</span> Download PDF</button>
+                <button onclick="downloadMarkdown()"><span class="icon">📝</span> Download Markdown</button>
+                <hr>
+                <button onclick="downloadPNG()"><span class="icon">🖼️</span> Download PNG</button>
+                <button onclick="downloadSVG()"><span class="icon">📐</span> Download SVG</button>
+            </div>
+        </div>
+        <a href="/" class="nav-new-btn">← New Connection</a>
+    </div>
+</nav>
 <div class="toast-container" id="toastContainer"></div>
 <div id="app"></div>
 
@@ -312,6 +336,19 @@ function showToast(msg, duration = 3000) {
         toast.addEventListener('animationend', () => toast.remove());
     }, duration);
 }
+
+(function() {
+    const raw = sessionStorage.getItem('dbdiagram_data');
+    if (raw) {
+        try {
+            const data = JSON.parse(raw);
+            const badge = document.getElementById('dbBadge');
+            if (badge && data.database) {
+                badge.textContent = data.database + (data.version ? ' · ' + data.version : '');
+            }
+        } catch(e) {}
+    }
+})();
 
 const BOX_W = 220;
 const COL_H = 18;
@@ -762,12 +799,6 @@ function render() {
     // Build HTML
     let html = `
     <div class="toolbar">
-        <h1>📊 ${esc(dbName)} — Visual Diagram</h1>
-        <div class="sep"></div>
-        <a href="/dynamic-list.html" class="nav-link">← Table List View</a>
-        <a href="/dynamic-analysis.html" class="nav-link" style="margin-left:4px">🔍 Analysis</a>
-        <a href="/" class="nav-link" style="margin-left:4px">← New Connection</a>
-        <div class="sep"></div>
         <button class="btn" onclick="zoomIn()">
             <svg viewBox="0 0 16 16"><path d="M8 3.5a.5.5 0 0 1 .5.5v3.5H12a.5.5 0 0 1 0 1H8.5V12a.5.5 0 0 1-1 0V8.5H4a.5.5 0 0 1 0-1h3.5V4a.5.5 0 0 1 .5-.5z"/></svg>
             Zoom In
@@ -779,21 +810,6 @@ function render() {
         </button>
         <button class="btn" onclick="zoomFit()">Fit All</button>
         <button class="btn" onclick="resetLayout()">Reset Layout</button>
-        <div class="sep"></div>
-        <div class="export-wrapper" id="exportWrapper">
-            <button class="export-btn" onclick="document.getElementById('exportWrapper').classList.toggle('open')">
-                <span>Export / Share</span><span class="arrow">▼</span>
-            </button>
-            <div class="export-menu">
-                <button onclick="shareLink()"><span class="icon">🔗</span> Share Link</button>
-                <button onclick="downloadHTML()"><span class="icon">📄</span> Download HTML</button>
-                <button onclick="downloadPDF()"><span class="icon">📑</span> Download PDF</button>
-                <button onclick="downloadMarkdown()"><span class="icon">📝</span> Download Markdown</button>
-                <hr>
-                <button onclick="downloadPNG()"><span class="icon">🖼️</span> Download PNG</button>
-                <button onclick="downloadSVG()"><span class="icon">📐</span> Download SVG</button>
-            </div>
-        </div>
     </div>
 
     <div class="canvas-wrapper" id="canvasWrapper">
