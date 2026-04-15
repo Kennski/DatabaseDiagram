@@ -260,22 +260,12 @@ body {
 }
 .minimap-viewport:active { cursor: grabbing; }
 
-.toast {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%) translateY(100px);
-    background: #1e293b;
-    border: 1px solid #334155;
-    padding: 10px 20px;
-    border-radius: 8px;
-    font-size: 13px;
-    color: #e2e8f0;
-    z-index: 9999;
-    transition: transform 0.3s ease;
-    pointer-events: none;
-}
-.toast.show { transform: translateX(-50%) translateY(0); }
+/* Toast notifications */
+.toast-container { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.toast { background: rgba(15, 23, 42, 0.95); color: #e2e8f0; padding: 12px 24px; border-radius: 8px; font-size: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); border: 1px solid rgba(99,102,241,0.3); animation: toastIn 0.3s ease; pointer-events: auto; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+.toast.fade-out { animation: toastOut 0.3s ease forwards; }
+@keyframes toastOut { to { opacity: 0; transform: translateY(12px); } }
 
 .no-data {
     display: flex;
@@ -294,9 +284,22 @@ body {
 </style>
 </head>
 <body>
+<div class="toast-container" id="toastContainer"></div>
 <div id="app"></div>
 
 <script>
+function showToast(msg, duration = 3000) {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = msg;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.add('fade-out');
+        toast.addEventListener('animationend', () => toast.remove());
+    }, duration);
+}
+
 const BOX_W = 220;
 const COL_H = 18;
 const HEADER_H = 30;
@@ -879,9 +882,6 @@ function render() {
         <canvas id="minimapCanvas" width="220" height="160"></canvas>
         <div class="minimap-viewport" id="minimapViewport"></div>
     </div>`;
-
-    // Toast
-    html += `<div class="toast" id="toast"></div>`;
 
     document.getElementById('app').innerHTML = html;
 
@@ -1508,15 +1508,6 @@ function downloadSVG() {
     a.click();
     URL.revokeObjectURL(a.href);
     showToast('SVG downloaded!');
-}
-
-// --- Toast ---
-function showToast(msg) {
-    const t = document.getElementById('toast');
-    if (!t) return;
-    t.textContent = msg;
-    t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 2500);
 }
 
 // --- Keyboard shortcuts ---
