@@ -943,7 +943,132 @@ function filterSearch(q){
     URL.revokeObjectURL(a.href);
     showToast('HTML export downloaded!');
 }
-function downloadPDF() { showToast('PDF export — coming soon'); }
+function downloadPDF() {
+    const raw = sessionStorage.getItem('dbdiagram_data');
+    if (!raw) { showToast('No schema data loaded'); return; }
+    const data = JSON.parse(raw);
+    const schema = data.schema;
+    const dbName = data.database || 'Database';
+    const version = data.version || '';
+    const tableCount = Object.keys(schema).length;
+    const date = new Date().toISOString().split('T')[0];
+    const categories = { 'All Tables': Object.keys(schema).sort() };
+
+    function escPdf(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    let html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + escPdf(dbName) + ' Schema</title>';
+    html += '<style>';
+    html += '@page { size: A4; margin: 20mm 15mm; }';
+    html += 'body { font-family: "Segoe UI", system-ui, sans-serif; color: #1e293b; font-size: 11px; line-height: 1.4; background: #fff; margin: 0; padding: 0; }';
+    html += 'h1 { font-size: 22px; margin: 0 0 4px; }';
+    html += 'h2 { font-size: 16px; margin: 20px 0 8px; color: #334155; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px; }';
+    html += 'h3 { font-size: 13px; margin: 14px 0 4px; color: #475569; }';
+    html += 'table { width: 100%; border-collapse: collapse; font-size: 10px; }';
+    html += 'th { background: #f1f5f9; padding: 4px 8px; border: 1px solid #e2e8f0; text-align: left; font-weight: 600; }';
+    html += 'td { padding: 3px 8px; border: 1px solid #e2e8f0; }';
+    html += '.mono { font-family: Consolas, monospace; color: #6366f1; }';
+    html += '.cover { text-align: center; padding: 80px 0 40px; }';
+    html += '.cover h1 { font-size: 28px; }';
+    html += '.cover .meta { color: #64748b; font-size: 13px; margin-top: 12px; }';
+    html += '.toc { column-count: 2; column-gap: 24px; }';
+    html += '.toc-cat { font-weight: 600; margin: 8px 0 2px; color: #334155; }';
+    html += '.toc-item { margin-left: 12px; color: #475569; }';
+    html += '.cat-heading { break-before: page; }';
+    html += '.table-section { break-inside: avoid; margin-bottom: 16px; }';
+    html += '.badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 600; }';
+    html += '.pk { background: #dbeafe; color: #1e40af; }';
+    html += '.fk { background: #fef3c7; color: #92400e; }';
+    html += '.rel-table td { font-size: 9px; }';
+    html += '.footer { text-align: center; color: #94a3b8; font-size: 9px; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 8px; }';
+    html += '</style></head><body>';
+
+    // Cover
+    html += '<div class="cover">';
+    html += '<h1>' + escPdf(dbName) + '</h1>';
+    html += '<div class="meta">';
+    if (version) html += 'Version: ' + escPdf(version) + ' &middot; ';
+    html += tableCount + ' tables &middot; Generated ' + date;
+    html += '</div></div>';
+
+    // Table of Contents
+    html += '<h2>Table of Contents</h2>';
+    html += '<div class="toc">';
+    for (const [cat, tables] of Object.entries(categories)) {
+        html += '<div class="toc-cat">' + escPdf(cat) + ' (' + tables.length + ')</div>';
+        for (const t of tables) {
+            html += '<div class="toc-item">' + escPdf(t) + '</div>';
+        }
+    }
+    html += '</div>';
+
+    // Table details per category
+    for (const [cat, tables] of Object.entries(categories)) {
+        html += '<div class="cat-heading"><h2>' + escPdf(cat) + '</h2></div>';
+        for (const t of tables) {
+            const tbl = schema[t];
+            if (!tbl) continue;
+            html += '<div class="table-section">';
+            html += '<h3>' + escPdf(t) + '</h3>';
+            html += '<table><thead><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Key</th></tr></thead><tbody>';
+            for (const col of tbl.columns) {
+                const isPK = tbl.primary_keys.includes(col.name);
+                const isFK = tbl.foreign_keys.some(fk => fk.columns.includes(col.name));
+                let keyBadge = '';
+                if (isPK) keyBadge = '<span class="badge pk">PK</span>';
+                if (isFK) keyBadge += (keyBadge ? ' ' : '') + '<span class="badge fk">FK</span>';
+                html += '<tr>';
+                html += '<td class="mono">' + escPdf(col.name) + '</td>';
+                html += '<td>' + escPdf(col.type) + '</td>';
+                html += '<td>' + (col.nullable ? 'YES' : 'NO') + '</td>';
+                html += '<td>' + keyBadge + '</td>';
+                html += '</tr>';
+            }
+            html += '</tbody></table>';
+            if (tbl.keys && tbl.keys.length > 0) {
+                html += '<div style="margin-top:4px;font-size:10px;"><strong>Indexes:</strong> ';
+                html += tbl.keys.map(function(k) {
+                    return escPdf(k.name) + ' (' + escPdf(k.columns.join(', ')) + ')' + (k.unique ? ' UNIQUE' : '');
+                }).join('; ');
+                html += '</div>';
+            }
+            if (tbl.foreign_keys && tbl.foreign_keys.length > 0) {
+                html += '<div style="margin-top:4px;font-size:10px;"><strong>Foreign Keys:</strong> ';
+                html += tbl.foreign_keys.map(function(fk) {
+                    let s = escPdf(fk.columns.join(', ')) + ' &rarr; ' + escPdf(fk.ref_table) + '.' + escPdf(fk.ref_columns.join(', '));
+                    if (fk.actions) s += ' (' + escPdf(fk.actions) + ')';
+                    return s;
+                }).join('; ');
+                html += '</div>';
+            }
+            html += '</div>';
+        }
+    }
+
+    // Relationship summary
+    const allFKs = [];
+    for (const [tName, tbl] of Object.entries(schema)) {
+        for (const fk of tbl.foreign_keys) {
+            allFKs.push({ from: tName, cols: fk.columns.join(', '), to: fk.ref_table, refCols: fk.ref_columns.join(', ') });
+        }
+    }
+    if (allFKs.length > 0) {
+        html += '<div class="cat-heading"><h2>Relationship Summary</h2></div>';
+        html += '<table class="rel-table"><thead><tr><th>From Table</th><th>Column(s)</th><th>To Table</th><th>Referenced Column(s)</th></tr></thead><tbody>';
+        for (const r of allFKs) {
+            html += '<tr><td class="mono">' + escPdf(r.from) + '</td><td class="mono">' + escPdf(r.cols) + '</td><td class="mono">' + escPdf(r.to) + '</td><td class="mono">' + escPdf(r.refCols) + '</td></tr>';
+        }
+        html += '</tbody></table>';
+    }
+
+    // Footer
+    html += '<div class="footer">Generated by DatabaseDiagram on ' + date + '</div>';
+    html += '<script>window.onload=function(){window.print()}<\/script>';
+    html += '</body></html>';
+
+    const w = window.open('', '_blank');
+    if (w) { w.document.write(html); w.document.close(); }
+    else { showToast('Popup blocked — please allow popups for PDF export'); }
+}
 function downloadMarkdown() {
     const raw = sessionStorage.getItem('dbdiagram_data');
     if (!raw) { showToast('No schema data loaded'); return; }
