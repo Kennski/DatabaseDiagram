@@ -1006,8 +1006,268 @@ async function shareLink() {
         showToast('Failed to generate share link: ' + err.message);
     }
 }
-function downloadHTML() { showToast('HTML export — coming soon'); }
-function downloadPDF() { showToast('PDF export — coming soon'); }
+function downloadHTML() {
+    const raw = sessionStorage.getItem('dbdiagram_data');
+    if (!raw) { showToast('No schema data loaded'); return; }
+    const data = JSON.parse(raw);
+    const schema = data.schema;
+    const dbName = data.database || 'Database';
+    const version = data.version || '';
+    const date = new Date().toISOString().split('T')[0];
+    const tableCount = Object.keys(schema).length;
+    const colCount = Object.values(schema).reduce((s, t) => s + t.columns.length, 0);
+    const fkCount = Object.values(schema).reduce((s, t) => s + t.foreign_keys.length, 0);
+    const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+    const { categories, categoryColors, tableCategory } = autoCategorize(schema);
+    const catCount = Object.keys(categories).length;
+
+    // Build category filter buttons
+    let filterBtns = `<button class="filter-btn active" onclick="filterCat('')">All</button>`;
+    for (const cat of Object.keys(categories)) {
+        const color = categoryColors[cat] ? categoryColors[cat].header : '#6366f1';
+        filterBtns += `<button class="filter-btn" onclick="filterCat('${esc(cat)}')" style="--cat-color:${esc(color)}">${esc(cat)} (${categories[cat].length})</button>`;
+    }
+
+    // Build table cards
+    let cards = '';
+    for (const [cat, tables] of Object.entries(categories)) {
+        const color = categoryColors[cat] ? categoryColors[cat].header : '#6366f1';
+        for (const t of tables) {
+            const tbl = schema[t];
+            if (!tbl) continue;
+            let colRows = '';
+            for (const col of tbl.columns) {
+                const isPK = tbl.primary_keys.includes(col.name);
+                const isFK = tbl.foreign_keys.some(fk => fk.columns.includes(col.name));
+                const icon = isPK ? '\u{1F511}' : isFK ? '\u{1F517}' : '\u25E6';
+                colRows += `<tr><td class="col-icon">${icon}</td><td class="col-name">${esc(col.name)}</td><td class="col-type">${esc(col.type)}</td><td class="col-null">${col.nullable ? 'NULL' : 'NOT NULL'}</td></tr>`;
+            }
+            let fkSection = '';
+            if (tbl.foreign_keys.length > 0) {
+                fkSection = `<div class="fk-section"><div class="fk-title">Foreign Keys</div>`;
+                for (const fk of tbl.foreign_keys) {
+                    fkSection += `<div class="fk-row">\u{1F517} ${esc(fk.columns.join(', '))} \u2192 ${esc(fk.ref_table)}.${esc(fk.ref_columns.join(', '))}${fk.actions ? ' (' + esc(fk.actions) + ')' : ''}</div>`;
+                }
+                fkSection += `</div>`;
+            }
+            cards += `<div class="table-card" data-category="${esc(cat)}">
+  <div class="card-header" style="border-left:4px solid ${esc(color)}" onclick="this.parentElement.classList.toggle('collapsed')">
+    <span class="card-title">${esc(t)}</span>
+    <span class="card-meta">${tbl.columns.length} cols \u2022 ${esc(cat)}</span>
+    <span class="card-chevron">\u25BC</span>
+  </div>
+  <div class="card-body">
+    <table class="col-table"><tbody>${colRows}</tbody></table>
+    ${fkSection}
+  </div>
+</div>`;
+        }
+    }
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${esc(dbName)} — Schema Export</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f172a;color:#e2e8f0;font-family:'Segoe UI',system-ui,sans-serif;padding:24px;line-height:1.5}
+.header{text-align:center;margin-bottom:24px}
+.header h1{font-size:1.6rem;margin-bottom:4px}
+.header .stats{color:#94a3b8;font-size:0.85rem}
+.search-box{display:block;width:100%;max-width:480px;margin:0 auto 16px;padding:10px 14px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:0.95rem;outline:none}
+.search-box:focus{border-color:#6366f1}
+.filters{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:20px}
+.filter-btn{padding:6px 14px;border-radius:999px;border:1px solid #334155;background:#1e293b;color:#94a3b8;cursor:pointer;font-size:0.8rem;transition:all .15s}
+.filter-btn:hover{border-color:#6366f1;color:#e2e8f0}
+.filter-btn.active{background:#6366f1;color:#fff;border-color:#6366f1}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px}
+.table-card{background:#1e293b;border:1px solid #334155;border-radius:8px;overflow:hidden}
+.table-card.hidden{display:none}
+.card-header{display:flex;align-items:center;padding:10px 14px;cursor:pointer;user-select:none;gap:8px}
+.card-header:hover{background:#253349}
+.card-title{font-weight:600;flex:1;font-size:0.95rem}
+.card-meta{font-size:0.75rem;color:#64748b}
+.card-chevron{font-size:0.65rem;color:#64748b;transition:transform .2s}
+.collapsed .card-chevron{transform:rotate(-90deg)}
+.collapsed .card-body{display:none}
+.card-body{padding:0 14px 14px}
+.col-table{width:100%;border-collapse:collapse;font-size:0.82rem}
+.col-table tr{border-bottom:1px solid #1e293b}
+.col-table td{padding:4px 6px}
+.col-icon{width:22px;text-align:center}
+.col-name{font-weight:500}
+.col-type{font-family:'Cascadia Code','Fira Code',monospace;color:#818cf8}
+.col-null{color:#64748b;text-align:right;font-size:0.75rem}
+.fk-section{margin-top:10px;padding-top:8px;border-top:1px solid #334155}
+.fk-title{font-size:0.75rem;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em}
+.fk-row{font-size:0.8rem;color:#94a3b8;padding:2px 0}
+.footer{text-align:center;margin-top:32px;color:#475569;font-size:0.75rem}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>${esc(dbName)}</h1>
+  <div class="stats">${version ? esc(version) + ' \u2022 ' : ''}${tableCount} tables \u2022 ${colCount} columns \u2022 ${fkCount} foreign keys \u2022 ${catCount} categories</div>
+</div>
+<input class="search-box" type="text" placeholder="Search tables and columns\u2026" oninput="filterSearch(this.value)">
+<div class="filters">${filterBtns}</div>
+<div class="grid">${cards}</div>
+<div class="footer">Generated by DatabaseDiagram on ${esc(date)}</div>
+<script>
+function filterCat(cat){
+  document.querySelectorAll('.filter-btn').forEach(function(b){b.classList.remove('active')});
+  event.target.classList.add('active');
+  document.querySelectorAll('.table-card').forEach(function(c){
+    c.classList.toggle('hidden',cat!==''&&c.getAttribute('data-category')!==cat);
+  });
+}
+function filterSearch(q){
+  var lower=q.toLowerCase();
+  document.querySelectorAll('.table-card').forEach(function(c){
+    c.classList.toggle('hidden',lower!==''&&c.textContent.toLowerCase().indexOf(lower)===-1);
+  });
+}
+</script>
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'schema-' + dbName.replace(/[^a-z0-9]/gi, '_') + '-' + date + '.html';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    showToast('HTML export downloaded!');
+}
+function downloadPDF() {
+    const raw = sessionStorage.getItem('dbdiagram_data');
+    if (!raw) { showToast('No schema data loaded'); return; }
+    const data = JSON.parse(raw);
+    const schema = data.schema;
+    const dbName = data.database || 'Database';
+    const version = data.version || '';
+    const tableCount = Object.keys(schema).length;
+    const date = new Date().toISOString().split('T')[0];
+    const { categories, categoryColors, tableCategory } = autoCategorize(schema);
+
+    let html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + esc(dbName) + ' Schema</title>';
+    html += '<style>';
+    html += '@page { size: A4; margin: 20mm 15mm; }';
+    html += 'body { font-family: "Segoe UI", system-ui, sans-serif; color: #1e293b; font-size: 11px; line-height: 1.4; background: #fff; margin: 0; padding: 0; }';
+    html += 'h1 { font-size: 22px; margin: 0 0 4px; }';
+    html += 'h2 { font-size: 16px; margin: 20px 0 8px; color: #334155; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px; }';
+    html += 'h3 { font-size: 13px; margin: 14px 0 4px; color: #475569; }';
+    html += 'table { width: 100%; border-collapse: collapse; font-size: 10px; }';
+    html += 'th { background: #f1f5f9; padding: 4px 8px; border: 1px solid #e2e8f0; text-align: left; font-weight: 600; }';
+    html += 'td { padding: 3px 8px; border: 1px solid #e2e8f0; }';
+    html += '.mono { font-family: Consolas, monospace; color: #6366f1; }';
+    html += '.cover { text-align: center; padding: 80px 0 40px; }';
+    html += '.cover h1 { font-size: 28px; }';
+    html += '.cover .meta { color: #64748b; font-size: 13px; margin-top: 12px; }';
+    html += '.toc { column-count: 2; column-gap: 24px; }';
+    html += '.toc-cat { font-weight: 600; margin: 8px 0 2px; color: #334155; }';
+    html += '.toc-item { margin-left: 12px; color: #475569; }';
+    html += '.cat-heading { break-before: page; }';
+    html += '.table-section { break-inside: avoid; margin-bottom: 16px; }';
+    html += '.badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 600; }';
+    html += '.pk { background: #dbeafe; color: #1e40af; }';
+    html += '.fk { background: #fef3c7; color: #92400e; }';
+    html += '.rel-table td { font-size: 9px; }';
+    html += '.footer { text-align: center; color: #94a3b8; font-size: 9px; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 8px; }';
+    html += '</style></head><body>';
+
+    // Cover
+    html += '<div class="cover">';
+    html += '<h1>' + esc(dbName) + '</h1>';
+    html += '<div class="meta">';
+    if (version) html += 'Version: ' + esc(version) + ' &middot; ';
+    html += tableCount + ' tables &middot; Generated ' + date;
+    html += '</div></div>';
+
+    // Table of Contents
+    html += '<h2>Table of Contents</h2>';
+    html += '<div class="toc">';
+    for (const [cat, tables] of Object.entries(categories)) {
+        html += '<div class="toc-cat">' + esc(cat) + ' (' + tables.length + ')</div>';
+        for (const t of tables) {
+            html += '<div class="toc-item">' + esc(t) + '</div>';
+        }
+    }
+    html += '</div>';
+
+    // Table details per category
+    for (const [cat, tables] of Object.entries(categories)) {
+        html += '<div class="cat-heading"><h2>' + esc(cat) + '</h2></div>';
+        for (const t of tables) {
+            const tbl = schema[t];
+            if (!tbl) continue;
+            html += '<div class="table-section">';
+            html += '<h3>' + esc(t) + '</h3>';
+            html += '<table><thead><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Key</th></tr></thead><tbody>';
+            for (const col of tbl.columns) {
+                const isPK = tbl.primary_keys.includes(col.name);
+                const isFK = tbl.foreign_keys.some(fk => fk.columns.includes(col.name));
+                let keyBadge = '';
+                if (isPK) keyBadge = '<span class="badge pk">PK</span>';
+                if (isFK) keyBadge += (keyBadge ? ' ' : '') + '<span class="badge fk">FK</span>';
+                html += '<tr>';
+                html += '<td class="mono">' + esc(col.name) + '</td>';
+                html += '<td>' + esc(col.type) + '</td>';
+                html += '<td>' + (col.nullable ? 'YES' : 'NO') + '</td>';
+                html += '<td>' + keyBadge + '</td>';
+                html += '</tr>';
+            }
+            html += '</tbody></table>';
+            if (tbl.keys && tbl.keys.length > 0) {
+                html += '<div style="margin-top:4px;font-size:10px;"><strong>Indexes:</strong> ';
+                html += tbl.keys.map(function(k) {
+                    return esc(k.name) + ' (' + esc(k.columns.join(', ')) + ')' + (k.unique ? ' UNIQUE' : '');
+                }).join('; ');
+                html += '</div>';
+            }
+            if (tbl.foreign_keys && tbl.foreign_keys.length > 0) {
+                html += '<div style="margin-top:4px;font-size:10px;"><strong>Foreign Keys:</strong> ';
+                html += tbl.foreign_keys.map(function(fk) {
+                    let s = esc(fk.columns.join(', ')) + ' &rarr; ' + esc(fk.ref_table) + '.' + esc(fk.ref_columns.join(', '));
+                    if (fk.actions) s += ' (' + esc(fk.actions) + ')';
+                    return s;
+                }).join('; ');
+                html += '</div>';
+            }
+            html += '</div>';
+        }
+    }
+
+    // Relationship summary
+    const allFKs = [];
+    for (const [tName, tbl] of Object.entries(schema)) {
+        for (const fk of tbl.foreign_keys) {
+            allFKs.push({ from: tName, cols: fk.columns.join(', '), to: fk.ref_table, refCols: fk.ref_columns.join(', ') });
+        }
+    }
+    if (allFKs.length > 0) {
+        html += '<div class="cat-heading"><h2>Relationship Summary</h2></div>';
+        html += '<table class="rel-table"><thead><tr><th>From Table</th><th>Column(s)</th><th>To Table</th><th>Referenced Column(s)</th></tr></thead><tbody>';
+        for (const r of allFKs) {
+            html += '<tr><td class="mono">' + esc(r.from) + '</td><td class="mono">' + esc(r.cols) + '</td><td class="mono">' + esc(r.to) + '</td><td class="mono">' + esc(r.refCols) + '</td></tr>';
+        }
+        html += '</tbody></table>';
+    }
+
+    // Footer
+    html += '<div class="footer">Generated by DatabaseDiagram on ' + date + '</div>';
+    html += '<script>window.onload=function(){window.print()}<\/script>';
+    html += '</body></html>';
+
+    const w = window.open('', '_blank');
+    if (w) { w.document.write(html); w.document.close(); }
+    else { showToast('Popup blocked — please allow popups for PDF export'); }
+}
 function downloadMarkdown() {
     const raw = sessionStorage.getItem('dbdiagram_data');
     if (!raw) { showToast('No schema data loaded'); return; }
