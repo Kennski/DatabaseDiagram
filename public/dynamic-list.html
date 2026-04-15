@@ -16,9 +16,6 @@ body {
     background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
     border-bottom: 1px solid #334155;
     padding: 24px 32px;
-    position: sticky;
-    top: 0;
-    z-index: 100;
 }
 .header h1 {
     font-size: 24px;
@@ -78,19 +75,19 @@ body {
 .filter-btn:hover { border-color: #38bdf8; color: #38bdf8; }
 .filter-btn.active { background: #38bdf8; color: #0f172a; border-color: #38bdf8; font-weight: 600; }
 
-.nav-btn {
-    background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
-    border: none;
-    border-radius: 8px;
-    padding: 6px 16px;
-    color: #fff;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    text-decoration: none;
-    white-space: nowrap;
-}
-.nav-btn:hover { opacity: 0.9; }
+/* Global nav bar */
+.global-nav { position: sticky; top: 0; z-index: 100; background: #0f172a; border-bottom: 1px solid #1e293b; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 50px; }
+.nav-left { display: flex; align-items: center; gap: 12px; }
+.nav-left .app-name { color: #f8fafc; font-size: 15px; font-weight: 700; text-decoration: none; }
+.nav-left .app-name:hover { color: #818cf8; }
+.db-badge { background: #1e293b; border: 1px solid #334155; border-radius: 20px; padding: 4px 12px; font-size: 12px; color: #94a3b8; white-space: nowrap; }
+.nav-center { display: flex; align-items: center; gap: 4px; }
+.nav-tab { color: #94a3b8; text-decoration: none; font-size: 13px; font-weight: 500; padding: 14px 16px; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; }
+.nav-tab:hover { color: #e2e8f0; }
+.nav-tab.active { color: #e2e8f0; border-bottom-color: #6366f1; }
+.nav-right { display: flex; align-items: center; gap: 10px; }
+.nav-new-btn { border: 1px solid #334155; background: transparent; color: #94a3b8; border-radius: 8px; padding: 6px 14px; font-size: 12px; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.nav-new-btn:hover { border-color: #6366f1; color: #e2e8f0; }
 
 .content {
     padding: 24px 32px;
@@ -354,6 +351,31 @@ body {
 </head>
 <body>
 <div class="toast-container" id="toastContainer"></div>
+<nav class="global-nav">
+    <div class="nav-left">
+        <a href="/" class="app-name">DatabaseDiagram</a>
+        <span class="db-badge" id="dbBadge"></span>
+    </div>
+    <div class="nav-center">
+        <a href="/dynamic-list.html" class="nav-tab active">Table List</a>
+        <a href="/dynamic-visual.html" class="nav-tab">Visual Diagram</a>
+        <a href="/dynamic-analysis.html" class="nav-tab">Analysis</a>
+    </div>
+    <div class="nav-right">
+        <div class="export-wrapper" id="exportWrapper">
+            <button class="export-btn" onclick="document.getElementById('exportWrapper').classList.toggle('open')">
+                <span>Export / Share</span><span class="arrow">▼</span>
+            </button>
+            <div class="export-menu">
+                <button onclick="shareLink()"><span class="icon">🔗</span> Share Link</button>
+                <button onclick="downloadHTML()"><span class="icon">📄</span> Download HTML</button>
+                <button onclick="downloadPDF()"><span class="icon">📑</span> Download PDF</button>
+                <button onclick="downloadMarkdown()"><span class="icon">📝</span> Download Markdown</button>
+            </div>
+        </div>
+        <a href="/" class="nav-new-btn">← New Connection</a>
+    </div>
+</nav>
 <div id="app"></div>
 
 <script>
@@ -368,6 +390,19 @@ function showToast(msg, duration = 3000) {
         toast.addEventListener('animationend', () => toast.remove());
     }, duration);
 }
+
+(function() {
+    const raw = sessionStorage.getItem('dbdiagram_data');
+    if (raw) {
+        try {
+            const data = JSON.parse(raw);
+            const badge = document.getElementById('dbBadge');
+            if (badge && data.database) {
+                badge.textContent = data.database + (data.version ? ' · ' + data.version : '');
+            }
+        } catch(e) {}
+    }
+})();
 
 // --- Auto-categorization engine ---
 function autoCategorize(schema) {
@@ -772,20 +807,6 @@ function render() {
 
     html += `<button class="filter-btn" onclick="expandAll()">Expand All</button>
             <button class="filter-btn" onclick="collapseAll()">Collapse All</button>
-            <a href="/dynamic-visual.html" class="nav-btn">Visual Diagram →</a>
-            <a href="/dynamic-analysis.html" class="nav-btn">🔍 Analysis →</a>
-            <a href="/" class="nav-btn" style="background:linear-gradient(135deg,#475569,#334155)">← New Connection</a>
-            <div class="export-wrapper" id="exportWrapper">
-                <button class="export-btn" onclick="document.getElementById('exportWrapper').classList.toggle('open')">
-                    <span>Export / Share</span><span class="arrow">▼</span>
-                </button>
-                <div class="export-menu">
-                    <button onclick="shareLink()"><span class="icon">🔗</span> Share Link</button>
-                    <button onclick="downloadHTML()"><span class="icon">📄</span> Download HTML</button>
-                    <button onclick="downloadPDF()"><span class="icon">📑</span> Download PDF</button>
-                    <button onclick="downloadMarkdown()"><span class="icon">📝</span> Download Markdown</button>
-                </div>
-            </div>
         </div>
     </div>
     <div class="content">`;
