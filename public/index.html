@@ -359,6 +359,13 @@ body {
     line-height: 1;
 }
 .recent-item .remove:hover { color: #ef4444; }
+
+/* Toast notifications */
+.toast-container { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.toast { background: rgba(15, 23, 42, 0.95); color: #e2e8f0; padding: 12px 24px; border-radius: 8px; font-size: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); border: 1px solid rgba(99,102,241,0.3); animation: toastIn 0.3s ease; pointer-events: auto; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+.toast.fade-out { animation: toastOut 0.3s ease forwards; }
+@keyframes toastOut { to { opacity: 0; transform: translateY(12px); } }
 </style>
 </head>
 <body>
@@ -515,9 +522,9 @@ body {
 
             <div class="upload-area" id="upload-area">
                 <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM6 20V4h5v7h7v9H6z"/></svg>
-                <p>Click or drag a <strong>.sql</strong> file here</p>
+                <p>Click or drag a <strong>.sql</strong>, <strong>.png</strong>, or <strong>.svg</strong> file here</p>
                 <div class="filename" id="file-name"></div>
-                <input type="file" id="sql-file" accept=".sql,.txt">
+                <input type="file" id="sql-file" accept=".sql,.txt,.png,.svg">
             </div>
 
             <div class="or-sep">or paste SQL below</div>
@@ -537,12 +544,59 @@ body {
 
 </div>
 
+<div id="toast-container" class="toast-container"></div>
+
 <div class="loading-overlay" id="loading">
     <div class="spinner"></div>
     <div class="loading-text" id="loading-text">Connecting to database...</div>
 </div>
 
 <script>
+// Toast notification system
+function showToast(message, duration = 3000) {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.add('fade-out');
+        toast.addEventListener('animationend', () => toast.remove());
+    }, duration);
+}
+
+// Extract schema metadata from PNG tEXt chunk
+function extractPNGMetadata(arrayBuffer) {
+    const data = new Uint8Array(arrayBuffer);
+    let offset = 8; // Skip PNG signature
+    while (offset < data.length) {
+        const view = new DataView(data.buffer, offset);
+        const length = view.getUint32(0);
+        const type = String.fromCharCode(data[offset + 4], data[offset + 5], data[offset + 6], data[offset + 7]);
+        if (type === 'tEXt') {
+            const chunkData = data.subarray(offset + 8, offset + 8 + length);
+            let nullIdx = 0;
+            while (nullIdx < chunkData.length && chunkData[nullIdx] !== 0) nullIdx++;
+            const keyword = new TextDecoder().decode(chunkData.subarray(0, nullIdx));
+            if (keyword === 'DatabaseDiagram') {
+                return new TextDecoder().decode(chunkData.subarray(nullIdx + 1));
+            }
+        }
+        if (type === 'IEND') break;
+        offset += 12 + length;
+    }
+    return null;
+}
+
+// Extract schema metadata from SVG <metadata> element
+function extractSVGMetadata(svgText) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgText, 'image/svg+xml');
+    const metaEl = doc.querySelector('metadata dbdiagram-schema');
+    if (metaEl) return metaEl.textContent;
+    return null;
+}
+
 (async function checkShareHash() {
     const hash = window.location.hash;
     if (!hash.startsWith('#data=')) return;
@@ -592,7 +646,51 @@ let uploadedSQL = '';
 
 fileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
-    if (file) {
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+
+    if (ext === 'png') {
+        fileName.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+        uploadArea.classList.add('has-file');
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            try {
+                const metadata = extractPNGMetadata(ev.target.result);
+                if (!metadata) {
+                    showToast('This image does not contain DatabaseDiagram schema data.', 4000);
+                    return;
+                }
+                const data = JSON.parse(metadata);
+                sessionStorage.setItem('dbdiagram_data', metadata);
+                showToast('Schema loaded from PNG — redirecting...');
+                window.location.href = '/dynamic-list.html';
+            } catch (err) {
+                showToast('Failed to parse schema from PNG: ' + err.message, 4000);
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    } else if (ext === 'svg') {
+        fileName.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+        uploadArea.classList.add('has-file');
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            try {
+                const metadata = extractSVGMetadata(ev.target.result);
+                if (!metadata) {
+                    showToast('This image does not contain DatabaseDiagram schema data.', 4000);
+                    return;
+                }
+                const data = JSON.parse(metadata);
+                sessionStorage.setItem('dbdiagram_data', metadata);
+                showToast('Schema loaded from SVG — redirecting...');
+                window.location.href = '/dynamic-list.html';
+            } catch (err) {
+                showToast('Failed to parse schema from SVG: ' + err.message, 4000);
+            }
+        };
+        reader.readAsText(file);
+    } else {
+        // Default: treat as SQL file
         fileName.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
         uploadArea.classList.add('has-file');
         const reader = new FileReader();
