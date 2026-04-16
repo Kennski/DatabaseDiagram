@@ -337,6 +337,10 @@ body {
     text-decoration: none;
 }
 .no-data a:hover { text-decoration: underline; }
+
+.note-badge { cursor: default; font-size: 11px; margin-left: 4px; opacity: 0.85; position: relative; }
+.note-badge:hover { opacity: 1; }
+.note-tooltip { position: fixed; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 12px; color: var(--text-primary); max-width: 300px; z-index: 1600; pointer-events: none; box-shadow: 0 4px 20px rgba(0,0,0,0.3); white-space: pre-wrap; word-break: break-word; }
 </style>
 </head>
 <body>
@@ -403,6 +407,16 @@ function showToast(msg, duration = 3000) {
         toast.classList.add('fade-out');
         toast.addEventListener('animationend', () => toast.remove());
     }, duration);
+}
+
+function getNotesKey() {
+    var raw = sessionStorage.getItem('dbdiagram_data');
+    if (!raw) return 'dbdiagram_notes_unknown';
+    var data = JSON.parse(raw);
+    return 'dbdiagram_notes_' + (data.database || 'unknown').replace(/[^a-zA-Z0-9]/g, '_');
+}
+function loadNotes() {
+    try { return JSON.parse(localStorage.getItem(getNotesKey()) || '{}'); } catch(e) { return {}; }
 }
 
 (function() {
@@ -960,9 +974,11 @@ function render() {
     }
 
     // Table boxes
+    var allNotes = loadNotes();
     for (const [name, box] of Object.entries(tableBoxes)) {
         const def = schema[name];
         const col = catColors[box.cat] || catColors['Other'] || { bg: '#f5f5f5', border: '#a3a3a3', header: '#737373', text: '#262626' };
+        var noteBadge = allNotes[name] ? ' <span class="note-badge" data-table="' + esc(name) + '">&#x1F4DD;</span>' : '';
 
         html += `<div class="tbl" id="tbl-${esc(name)}" data-name="${esc(name)}"
                  style="left:${box.x}px; top:${box.y}px; width:${box.w}px;
@@ -972,7 +988,7 @@ function render() {
                  onmouseleave="unhighlightAll()">
             <div class="tbl-header" style="background:${col.header}">
                 <span class="tbl-icon">⊞</span>
-                <span>${esc(name)}</span>
+                <span>${esc(name)}</span>${noteBadge}
             </div>
             <div class="tbl-cols">`;
 
@@ -1067,6 +1083,45 @@ function render() {
 
     updateArrows();
     zoomFit();
+
+    // Note badge tooltips
+    document.addEventListener('mouseover', function(e) {
+        var badge = e.target.closest('.note-badge');
+        if (!badge) return;
+        var tableName = badge.dataset.table;
+        var notes = loadNotes();
+        var note = notes[tableName];
+        if (!note) return;
+
+        var existing = document.getElementById('noteTooltip');
+        if (existing) existing.remove();
+
+        var tooltip = document.createElement('div');
+        tooltip.className = 'note-tooltip';
+        tooltip.id = 'noteTooltip';
+        tooltip.textContent = note;
+        document.body.appendChild(tooltip);
+
+        var rect = badge.getBoundingClientRect();
+        tooltip.style.left = rect.right + 8 + 'px';
+        tooltip.style.top = rect.top + 'px';
+
+        // Keep tooltip on screen
+        var tipRect = tooltip.getBoundingClientRect();
+        if (tipRect.right > window.innerWidth) {
+            tooltip.style.left = (rect.left - tipRect.width - 8) + 'px';
+        }
+        if (tipRect.bottom > window.innerHeight) {
+            tooltip.style.top = (window.innerHeight - tipRect.height - 8) + 'px';
+        }
+    });
+
+    document.addEventListener('mouseout', function(e) {
+        if (e.target.closest('.note-badge')) {
+            var tooltip = document.getElementById('noteTooltip');
+            if (tooltip) tooltip.remove();
+        }
+    });
 }
 
 // --- State ---
@@ -2069,6 +2124,7 @@ function downloadMarkdown() {
     const date = new Date().toISOString().split('T')[0];
 
     const { categories, tableCategory } = autoCategorize(schema);
+    var notes = loadNotes();
 
     let md = `# Database Schema: ${dbName}\n`;
     md += `> Generated on ${date} | ${tableCount} tables | ${version}\n\n`;
@@ -2086,13 +2142,18 @@ function downloadMarkdown() {
             const tbl = schema[t];
             if (!tbl) continue;
             md += `### ${t}\n\n`;
-            md += `| Column | Type | Nullable | Key |\n`;
-            md += `|--------|------|----------|-----|\n`;
+            if (notes[t]) {
+                md += `> **Note:** ${notes[t]}\n\n`;
+            }
+            md += `| Column | Type | Nullable | Key | Notes |\n`;
+            md += `|--------|------|----------|-----|-------|\n`;
             for (const col of tbl.columns) {
                 const isPK = tbl.primary_keys.includes(col.name);
                 const isFK = tbl.foreign_keys.some(fk => fk.columns.includes(col.name));
                 const key = isPK ? 'PK' : isFK ? 'FK' : '';
-                md += `| ${col.name} | ${col.type} | ${col.nullable ? 'YES' : 'NO'} | ${key} |\n`;
+                var colNoteKey = t + '.' + col.name;
+                var colNote = notes[colNoteKey] || '';
+                md += `| ${col.name} | ${col.type} | ${col.nullable ? 'YES' : 'NO'} | ${key} | ${colNote} |\n`;
             }
             md += `\n`;
             if (tbl.keys.length > 0) {
