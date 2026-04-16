@@ -85,6 +85,8 @@ body {
 .nav-tab { color: #94a3b8; text-decoration: none; font-size: 13px; font-weight: 500; padding: 14px 16px; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; }
 .nav-tab:hover { color: #e2e8f0; }
 .nav-tab.active { color: #e2e8f0; border-bottom-color: #6366f1; }
+.nav-tab.diff-tab { opacity: 0.4; }
+.nav-tab.diff-tab.has-diff { opacity: 1; }
 .nav-right { display: flex; align-items: center; gap: 10px; }
 .nav-new-btn { border: 1px solid #334155; background: transparent; color: #94a3b8; border-radius: 8px; padding: 6px 14px; font-size: 12px; text-decoration: none; white-space: nowrap; cursor: pointer; }
 .nav-new-btn:hover { border-color: #6366f1; color: #e2e8f0; }
@@ -360,6 +362,7 @@ body {
         <a href="/dynamic-list.html" class="nav-tab active">Table List</a>
         <a href="/dynamic-visual.html" class="nav-tab">Visual Diagram</a>
         <a href="/dynamic-analysis.html" class="nav-tab">Analysis</a>
+        <a href="/dynamic-diff.html" class="nav-tab diff-tab" id="diffTab">Diff</a>
     </div>
     <div class="nav-right">
         <div class="export-wrapper" id="exportWrapper">
@@ -371,6 +374,8 @@ body {
                 <button onclick="downloadHTML()"><span class="icon">📄</span> Download HTML</button>
                 <button onclick="downloadPDF()"><span class="icon">📑</span> Download PDF</button>
                 <button onclick="downloadMarkdown()"><span class="icon">📝</span> Download Markdown</button>
+                <button onclick="downloadMermaid()"><span class="icon">🧜</span> Download Mermaid</button>
+                <button onclick="copyMermaid()"><span class="icon">📋</span> Copy Mermaid</button>
             </div>
         </div>
         <a href="/" class="nav-new-btn">← New Connection</a>
@@ -401,6 +406,13 @@ function showToast(msg, duration = 3000) {
                 badge.textContent = data.database + (data.version ? ' · ' + data.version : '');
             }
         } catch(e) {}
+    }
+})();
+
+(function() {
+    var diffTab = document.getElementById('diffTab');
+    if (diffTab && sessionStorage.getItem('dbdiagram_diff_a')) {
+        diffTab.classList.add('has-diff');
     }
 })();
 
@@ -1355,6 +1367,67 @@ function downloadMarkdown() {
     a.click();
     URL.revokeObjectURL(a.href);
     showToast('Markdown downloaded!');
+}
+function generateMermaid(schema, categories) {
+    let mermaid = 'erDiagram\n';
+    const ordered = categories
+        ? Object.entries(categories)
+        : [['All Tables', Object.keys(schema).sort()]];
+
+    for (const [cat, tables] of ordered) {
+        mermaid += `    %% Category: ${cat}\n`;
+        for (const t of tables) {
+            const tbl = schema[t];
+            if (!tbl) continue;
+            mermaid += `    ${t} {\n`;
+            for (const col of tbl.columns) {
+                const isPK = tbl.primary_keys.includes(col.name);
+                const isFK = tbl.foreign_keys.some(fk => fk.columns.includes(col.name));
+                const marker = isPK ? ' PK' : isFK ? ' FK' : '';
+                const type = col.type.replace(/\(\d+\)$/, '').replace(/\s+/g, '_');
+                mermaid += `        ${type} ${col.name}${marker}\n`;
+            }
+            mermaid += `    }\n`;
+        }
+    }
+
+    for (const [t, tbl] of Object.entries(schema)) {
+        for (const fk of tbl.foreign_keys) {
+            if (schema[fk.ref_table]) {
+                mermaid += `    ${t} }o--|| ${fk.ref_table} : "${fk.columns.join(', ')}"\n`;
+            }
+        }
+    }
+    return mermaid;
+}
+
+function downloadMermaid() {
+    const raw = sessionStorage.getItem('dbdiagram_data');
+    if (!raw) { showToast('No schema data loaded'); return; }
+    const data = JSON.parse(raw);
+    const dbName = data.database || 'Database';
+    const date = new Date().toISOString().split('T')[0];
+    const { categories } = autoCategorize(data.schema);
+    const mermaid = generateMermaid(data.schema, categories);
+    const md = '```mermaid\n' + mermaid + '```\n';
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `schema-${dbName.replace(/[^a-zA-Z0-9]/g, '_')}-${date}.mermaid.md`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('Mermaid diagram downloaded!');
+}
+
+function copyMermaid() {
+    const raw = sessionStorage.getItem('dbdiagram_data');
+    if (!raw) { showToast('No schema data loaded'); return; }
+    const data = JSON.parse(raw);
+    const { categories } = autoCategorize(data.schema);
+    const mermaid = generateMermaid(data.schema, categories);
+    navigator.clipboard.writeText(mermaid).then(() => {
+        showToast('Mermaid diagram copied to clipboard!');
+    }).catch(() => showToast('Failed to copy to clipboard'));
 }
 
 function generateAnalysisSummaryMd(schema) {
