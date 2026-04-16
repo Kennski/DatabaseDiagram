@@ -34,6 +34,11 @@ An interactive web-based tool for visualizing and analyzing database schemas. Co
 - **Markdown Export** — GitHub-Flavored Markdown documentation with tables grouped by category, column details, indexes, and FK relationships. Ready for wikis (GitHub, Confluence, Notion)
 - **PNG Export** — Visual diagram as PNG with footer bar and embedded schema metadata (re-importable)
 - **SVG Export** — Visual diagram as SVG with footer bar and embedded schema metadata (re-importable)
+- **Mermaid Export** — Download or copy a Mermaid `erDiagram` block for embedding in GitHub READMEs, Notion, or any Mermaid-compatible tool
+
+### Schema Comparison
+- **Schema Diff** — Compare two schemas side-by-side from any combination of live connections, SQL files, or the currently loaded schema. Shows added, removed, and modified tables with column-level change details
+- **Diff Export** — Download the comparison as a Markdown report or share via compressed URL
 
 ---
 
@@ -107,7 +112,8 @@ An interactive web-based tool for visualizing and analyzing database schemas. Co
 │   ├── index.html               # Connection form (entry point) + SQL auto-detection
 │   ├── dynamic-list.html        # Table list view
 │   ├── dynamic-visual.html      # Visual diagram
-│   └── dynamic-analysis.html    # Schema analysis & tips
+│   ├── dynamic-analysis.html    # Schema analysis & tips
+│   └── dynamic-diff.html        # Schema diff / comparison
 ├── docs/
 │   └── superpowers/
 │       ├── specs/               # Design specifications

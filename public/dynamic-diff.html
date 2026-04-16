@@ -269,6 +269,33 @@ body {
 </div>
 
 <script>
+// --- Diff hash detection (shared links) ---
+(async function checkDiffHash() {
+    var hash = window.location.hash;
+    if (!hash.startsWith('#diff=')) return;
+    var encoded = decodeURIComponent(hash.slice(6));
+    try {
+        var json;
+        if (encoded.startsWith('gz:')) {
+            var binary = atob(encoded.slice(3));
+            var bytes = new Uint8Array(binary.length);
+            for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            var blob = new Blob([bytes]);
+            json = await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text();
+        } else if (encoded.startsWith('raw:')) {
+            json = decodeURIComponent(escape(atob(encoded.slice(4))));
+        } else return;
+        var parsed = JSON.parse(json);
+        if (parsed.a && parsed.b && parsed.a.schema && parsed.b.schema) {
+            schemaA = parsed.a; schemaB = parsed.b;
+            updateCompareButton();
+            showBadge('a', parsed.a.database, Object.keys(parsed.a.schema).length);
+            showBadge('b', parsed.b.database, Object.keys(parsed.b.schema).length);
+            document.getElementById('compareBtn').click();
+        }
+    } catch (err) { console.error('Failed to load shared diff:', err); }
+})();
+
 // --- Escape HTML ---
 function esc(s) {
     if (s === null || s === undefined) return '';
@@ -663,11 +690,131 @@ document.getElementById('compareBtn').addEventListener('click', function() {
     sessionStorage.setItem('dbdiagram_diff_b', JSON.stringify(schemaB));
 });
 
-// --- Export stubs ---
-function shareLink() { showToast('Share Link \u2014 coming soon'); }
-function downloadMarkdown() { showToast('Diff report \u2014 coming soon'); }
-function downloadMermaid() { showToast('Mermaid export \u2014 coming soon'); }
-function copyMermaid() { showToast('Copy Mermaid \u2014 coming soon'); }
+// --- Generate Mermaid ---
+function generateMermaid(schema, categories) {
+    let mermaid = 'erDiagram\n';
+    const ordered = categories
+        ? Object.entries(categories)
+        : [['All Tables', Object.keys(schema).sort()]];
+    for (const [cat, tables] of ordered) {
+        mermaid += '    %% Category: ' + cat + '\n';
+        for (const t of tables) {
+            const tbl = schema[t];
+            if (!tbl) continue;
+            mermaid += '    ' + t + ' {\n';
+            for (const col of tbl.columns) {
+                const isPK = tbl.primary_keys.includes(col.name);
+                const isFK = tbl.foreign_keys.some(fk => fk.columns.includes(col.name));
+                const marker = isPK ? ' PK' : isFK ? ' FK' : '';
+                const type = col.type.replace(/\(\d+\)$/, '').replace(/\s+/g, '_');
+                mermaid += '        ' + type + ' ' + col.name + marker + '\n';
+            }
+            mermaid += '    }\n';
+        }
+    }
+    for (const [t, tbl] of Object.entries(schema)) {
+        for (const fk of tbl.foreign_keys) {
+            if (schema[fk.ref_table]) {
+                mermaid += '    ' + t + ' }o--|| ' + fk.ref_table + ' : "' + fk.columns.join(', ') + '"\n';
+            }
+        }
+    }
+    return mermaid;
+}
+
+// --- Export functions ---
+async function shareLink() {
+    if (!schemaA || !schemaB) { showToast('Run a comparison first'); return; }
+    var payload = JSON.stringify({ a: schemaA, b: schemaB });
+    try {
+        var encoded;
+        if (typeof CompressionStream !== 'undefined') {
+            var blob = new Blob([payload]);
+            var cs = new CompressionStream('gzip');
+            var compressedBlob = await new Response(blob.stream().pipeThrough(cs)).blob();
+            var buffer = await compressedBlob.arrayBuffer();
+            var bytes = new Uint8Array(buffer);
+            var binary = '';
+            for (var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+            encoded = 'gz:' + btoa(binary);
+        } else {
+            encoded = 'raw:' + btoa(unescape(encodeURIComponent(payload)));
+        }
+        if (encoded.length > 200000) { showToast('Schemas too large for URL sharing', 5000); return; }
+        var url = window.location.origin + '/dynamic-diff.html#diff=' + encodeURIComponent(encoded);
+        await navigator.clipboard.writeText(url);
+        showToast('Diff link copied to clipboard!');
+    } catch (err) { showToast('Failed: ' + err.message); }
+}
+
+function downloadMarkdown() {
+    if (!schemaA || !schemaB) { showToast('Run a comparison first'); return; }
+    var diff = computeDiff(schemaA, schemaB);
+    var date = new Date().toISOString().split('T')[0];
+    var md = '# Schema Diff Report\n> Generated ' + date + '\n\n';
+    md += '**' + diff.nameA + '** (' + diff.countA + ' tables) \u2192 **' + diff.nameB + '** (' + diff.countB + ' tables)\n\n';
+    md += '| Change | Count |\n|--------|-------|\n';
+    md += '| Added | ' + diff.added.length + ' |\n| Removed | ' + diff.removed.length + ' |\n| Modified | ' + diff.modified.length + ' |\n| Unchanged | ' + diff.unchanged.length + ' |\n\n';
+    if (diff.added.length) {
+        md += '## Added Tables\n\n';
+        for (var i = 0; i < diff.added.length; i++) {
+            var t = diff.added[i];
+            md += '### + ' + t.name + '\n| Column | Type | Nullable |\n|--------|------|----------|\n';
+            for (var j = 0; j < t.table.columns.length; j++) {
+                var col = t.table.columns[j];
+                md += '| ' + col.name + ' | ' + col.type + ' | ' + (col.nullable ? 'YES' : 'NO') + ' |\n';
+            }
+            md += '\n';
+        }
+    }
+    if (diff.removed.length) {
+        md += '## Removed Tables\n\n';
+        for (var i = 0; i < diff.removed.length; i++) md += '- ~~' + diff.removed[i].name + '~~\n';
+        md += '\n';
+    }
+    if (diff.modified.length) {
+        md += '## Modified Tables\n\n';
+        for (var i = 0; i < diff.modified.length; i++) {
+            var m = diff.modified[i];
+            md += '### ~ ' + m.name + '\n';
+            for (var j = 0; j < m.changes.addedCols.length; j++) md += '- + Column: ' + m.changes.addedCols[j].name + ' (' + m.changes.addedCols[j].type + ')\n';
+            for (var j = 0; j < m.changes.removedCols.length; j++) md += '- - Column: ' + m.changes.removedCols[j].name + ' (' + m.changes.removedCols[j].type + ')\n';
+            for (var j = 0; j < m.changes.changedCols.length; j++) {
+                var c = m.changes.changedCols[j];
+                md += '- ~ ' + c.name + ': ' + c.diffs.map(function(d) { return d.field + ': ' + d.from + ' \u2192 ' + d.to; }).join(', ') + '\n';
+            }
+            for (var j = 0; j < m.changes.addedFKs.length; j++) md += '- + FK: ' + m.changes.addedFKs[j].columns.join(',') + ' \u2192 ' + m.changes.addedFKs[j].ref_table + '\n';
+            for (var j = 0; j < m.changes.removedFKs.length; j++) md += '- - FK: ' + m.changes.removedFKs[j].columns.join(',') + ' \u2192 ' + m.changes.removedFKs[j].ref_table + '\n';
+            md += '\n';
+        }
+    }
+    var blob = new Blob([md], { type: 'text/markdown' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'diff-' + date + '.md';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('Diff report downloaded!');
+}
+
+function downloadMermaid() {
+    if (!schemaB) { showToast('Load Schema B first'); return; }
+    var mermaid = generateMermaid(schemaB.schema, null);
+    var md = '```mermaid\n' + mermaid + '```\n';
+    var blob = new Blob([md], { type: 'text/markdown' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'schema-b-' + new Date().toISOString().split('T')[0] + '.mermaid.md';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('Mermaid diagram downloaded!');
+}
+
+function copyMermaid() {
+    if (!schemaB) { showToast('Load Schema B first'); return; }
+    var mermaid = generateMermaid(schemaB.schema, null);
+    navigator.clipboard.writeText(mermaid).then(function() { showToast('Copied!'); }).catch(function() { showToast('Failed'); });
+}
 
 // --- Click-outside handler for export dropdown ---
 document.addEventListener('click', function(e) {
