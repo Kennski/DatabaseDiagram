@@ -321,6 +321,7 @@ body {
 .search-dropdown div:hover { background: var(--bg-hover); }
 @keyframes highlightPulse { 0% { box-shadow: 0 0 0 4px rgba(234,179,8,0.6); } 100% { box-shadow: 0 0 0 0 transparent; } }
 .highlight-pulse { animation: highlightPulse 1.5s ease-out; }
+.compact-more { padding: 1px 10px; font-size: 10px; opacity: 0.5; font-style: italic; height: 18px; line-height: 18px; }
 
 .no-data {
     display: flex;
@@ -734,6 +735,9 @@ function autoCategorize(schema) {
     return { categories, catColors, tableCat };
 }
 
+// --- Compact mode state ---
+var compactMode = localStorage.getItem('dbdiagram_compact') === 'true';
+
 // --- Main render ---
 function render() {
     const raw = sessionStorage.getItem('dbdiagram_data');
@@ -789,8 +793,20 @@ function render() {
     // Compute table box sizes
     const tableBoxes = {};
     for (const [name, def] of Object.entries(schema)) {
-        const h = HEADER_H + def.columns.length * COL_H + PAD;
-        tableBoxes[name] = { w: BOX_W, h, x: 0, y: 0, cat: tableCat[name] || 'Other' };
+        var visibleCols;
+        if (compactMode) {
+            visibleCols = def.columns.filter(function(col) {
+                return def.primary_keys.includes(col.name) ||
+                       def.foreign_keys.some(function(fk) { return fk.columns.includes(col.name); });
+            });
+            var hiddenCount = def.columns.length - visibleCols.length;
+            var extraRow = hiddenCount > 0 ? 1 : 0;
+            var h = HEADER_H + (visibleCols.length + extraRow) * COL_H + PAD;
+            tableBoxes[name] = { w: BOX_W, h, x: 0, y: 0, cat: tableCat[name] || 'Other' };
+        } else {
+            var h = HEADER_H + def.columns.length * COL_H + PAD;
+            tableBoxes[name] = { w: BOX_W, h, x: 0, y: 0, cat: tableCat[name] || 'Other' };
+        }
     }
 
     // Layout: compute actual category bounds, then position without overlaps
@@ -895,6 +911,7 @@ function render() {
             <input type="text" class="table-search" id="diagramSearch" placeholder="Search tables..." autocomplete="off">
             <div class="search-dropdown" id="searchDropdown"></div>
         </div>
+        <button class="btn" id="compactToggle" onclick="toggleCompact()">${compactMode ? 'Detailed' : 'Compact'}</button>
     </div>
 
     <div class="canvas-wrapper" id="canvasWrapper">
@@ -959,7 +976,17 @@ function render() {
             </div>
             <div class="tbl-cols">`;
 
-        for (const c of def.columns) {
+        var columnsToShow;
+        if (compactMode) {
+            columnsToShow = def.columns.filter(function(c) {
+                return def.primary_keys.includes(c.name) ||
+                       def.foreign_keys.some(function(fk) { return fk.columns.includes(c.name); });
+            });
+        } else {
+            columnsToShow = def.columns;
+        }
+
+        for (const c of columnsToShow) {
             const isPk = def.primary_keys.includes(c.name);
             const isFk = def.foreign_keys.some(f => f.columns.includes(c.name));
             let cls = '';
@@ -971,6 +998,13 @@ function render() {
                     <span>${esc(c.name)}</span>
                     <span class="col-type">${esc(shortT)}</span>
                 </div>`;
+        }
+
+        if (compactMode) {
+            var hiddenCount = def.columns.length - columnsToShow.length;
+            if (hiddenCount > 0) {
+                html += `<div class="compact-more" style="color:${col.text}">+ ${hiddenCount} more</div>`;
+            }
         }
 
         html += `</div></div>`;
@@ -2177,6 +2211,13 @@ function generateAnalysisSummaryMd(schema) {
     md += `- ${errors} error(s) found\n`;
     md += `- ${warnings} warning(s) found\n`;
     return md;
+}
+
+// --- Compact mode toggle ---
+function toggleCompact() {
+    compactMode = !compactMode;
+    localStorage.setItem('dbdiagram_compact', String(compactMode));
+    render();
 }
 
 // --- Table search ---
