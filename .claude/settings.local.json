@@ -1,11 +1,5 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(wc -l /e/Dev/AldcisDatabaseDiagram/public/*.html)",
-      "Bash(git -C /e/Dev/AldcisDatabaseDiagram log --oneline)",
-      "Bash(du -sh *)",
-      "Bash(node -e \":*)",
-      "Bash(timeout 5 node server.js)"
-    ]
+    "defaultMode": "dontAsk"
   }
 }
