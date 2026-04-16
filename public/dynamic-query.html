@@ -461,6 +461,100 @@ body {
     font-style: italic;
     font-size: 13px;
 }
+
+/* WHERE clause builder */
+.where-section {
+    margin-top: 16px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    overflow: hidden;
+}
+.where-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: #0f172a;
+    border-bottom: 1px solid #334155;
+}
+.where-header h4 {
+    font-size: 13px;
+    font-weight: 700;
+    color: #f8fafc;
+    margin: 0;
+}
+.where-add-btn {
+    background: none;
+    border: 1px solid #334155;
+    color: #6366f1;
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.where-add-btn:hover { border-color: #6366f1; background: rgba(99,102,241,0.1); }
+.where-body { padding: 8px 12px; }
+.where-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    flex-wrap: wrap;
+}
+.where-connector-btn {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    color: #6366f1;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 8px;
+    cursor: pointer;
+    min-width: 38px;
+    text-align: center;
+    transition: all 0.15s;
+}
+.where-connector-btn:hover { border-color: #6366f1; background: rgba(99,102,241,0.1); }
+.where-connector-spacer {
+    min-width: 38px;
+}
+.where-select, .where-input {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 12px;
+    padding: 5px 8px;
+    outline: none;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+.where-select:focus, .where-input:focus { border-color: #6366f1; }
+.where-select { cursor: pointer; }
+.where-col-select { min-width: 160px; }
+.where-op-select { min-width: 90px; }
+.where-input { min-width: 140px; flex: 1; }
+.where-input::placeholder { color: #475569; }
+.where-remove-btn {
+    background: none;
+    border: none;
+    color: #475569;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    transition: color 0.15s;
+}
+.where-remove-btn:hover { color: #ef4444; }
+.where-empty {
+    text-align: center;
+    padding: 12px;
+    color: #475569;
+    font-size: 12px;
+    font-style: italic;
+}
 </style>
 </head>
 <body>
@@ -1237,6 +1331,122 @@ function changeDialect(d) {
 }
 
 // =============================================================================
+// WHERE clause builder
+// =============================================================================
+function addCondition() {
+    whereConditions.push({ column: '', operator: '=', value: '', connector: 'AND' });
+    renderAll();
+}
+
+function removeCondition(idx) {
+    whereConditions.splice(idx, 1);
+    renderAll();
+}
+
+function updateWhere(idx, field, value) {
+    if (!whereConditions[idx]) return;
+    whereConditions[idx][field] = value;
+    if (field === 'operator') {
+        if (value === 'IS NULL' || value === 'IS NOT NULL') {
+            whereConditions[idx].value = '';
+        }
+        // Re-render to show/hide value input
+        renderWhere();
+    }
+    generateSQL();
+    saveState();
+}
+
+function toggleConnector(idx) {
+    if (!whereConditions[idx]) return;
+    whereConditions[idx].connector = whereConditions[idx].connector === 'AND' ? 'OR' : 'AND';
+    renderAll();
+}
+
+function getAvailableColumns() {
+    var cols = [];
+    for (var i = 0; i < selectedTables.length; i++) {
+        var st = selectedTables[i];
+        var tableCols = schema[st.name].columns;
+        for (var ci = 0; ci < tableCols.length; ci++) {
+            if (columnSelections[st.name] && columnSelections[st.name][tableCols[ci].name]) {
+                cols.push({ label: st.alias + '.' + tableCols[ci].name, value: st.alias + '.' + tableCols[ci].name });
+            }
+        }
+    }
+    return cols;
+}
+
+function renderWhere() {
+    var container = document.getElementById('whereSection');
+    if (!container) return;
+
+    if (selectedTables.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    var availCols = getAvailableColumns();
+    var operators = ['=', '!=', '>', '<', '>=', '<=', 'LIKE', 'IN', 'IS NULL', 'IS NOT NULL'];
+
+    var html = '<div class="where-section">' +
+        '<div class="where-header">' +
+        '<h4>WHERE Conditions</h4>' +
+        '<button class="where-add-btn" onclick="addCondition()">+ Add Condition</button>' +
+        '</div>' +
+        '<div class="where-body">';
+
+    if (whereConditions.length === 0) {
+        html += '<div class="where-empty">No conditions. Click "+ Add Condition" to filter results.</div>';
+    }
+
+    for (var i = 0; i < whereConditions.length; i++) {
+        var cond = whereConditions[i];
+        var hideValue = cond.operator === 'IS NULL' || cond.operator === 'IS NOT NULL';
+
+        html += '<div class="where-row">';
+
+        // Connector (AND/OR toggle) -- not on first row
+        if (i === 0) {
+            html += '<span class="where-connector-spacer"></span>';
+        } else {
+            html += '<button class="where-connector-btn" onclick="toggleConnector(' + i + ')">' + esc(cond.connector) + '</button>';
+        }
+
+        // Column dropdown
+        html += '<select class="where-select where-col-select" onchange="updateWhere(' + i + ', \'column\', this.value)">';
+        html += '<option value="">-- column --</option>';
+        for (var ci = 0; ci < availCols.length; ci++) {
+            var sel = availCols[ci].value === cond.column ? ' selected' : '';
+            html += '<option value="' + esc(availCols[ci].value) + '"' + sel + '>' + esc(availCols[ci].label) + '</option>';
+        }
+        html += '</select>';
+
+        // Operator dropdown
+        html += '<select class="where-select where-op-select" onchange="updateWhere(' + i + ', \'operator\', this.value)">';
+        for (var oi = 0; oi < operators.length; oi++) {
+            var opSel = operators[oi] === cond.operator ? ' selected' : '';
+            html += '<option value="' + esc(operators[oi]) + '"' + opSel + '>' + esc(operators[oi]) + '</option>';
+        }
+        html += '</select>';
+
+        // Value input (hidden for IS NULL / IS NOT NULL)
+        if (!hideValue) {
+            var placeholder = cond.operator === 'IN' ? 'val1, val2, ...' : 'value';
+            html += '<input type="text" class="where-input" value="' + esc(cond.value) + '" placeholder="' + placeholder + '" onchange="updateWhere(' + i + ', \'value\', this.value)" onkeyup="updateWhere(' + i + ', \'value\', this.value)" />';
+        }
+
+        // Remove button
+        html += '<button class="where-remove-btn" onclick="removeCondition(' + i + ')" title="Remove condition">&times;</button>';
+
+        html += '</div>';
+    }
+
+    html += '</div></div>';
+    container.innerHTML = html;
+}
+
+// =============================================================================
 // Generate SQL
 // =============================================================================
 function generateSQL() {
@@ -1343,7 +1553,8 @@ function saveState() {
             selectedTables: selectedTables,
             columnSelections: columnSelections,
             tableAliases: tableAliases,
-            dialect: dialect
+            dialect: dialect,
+            whereConditions: whereConditions
         };
         sessionStorage.setItem('dbdiagram_query_state', JSON.stringify(state));
     } catch(e) {}
@@ -1362,6 +1573,7 @@ function loadState() {
             var sel = document.getElementById('dialectSelect');
             if (sel) sel.value = dialect;
         }
+        if (state.whereConditions) whereConditions = state.whereConditions;
     } catch(e) {}
 }
 
@@ -1572,7 +1784,9 @@ function renderCanvas() {
     }
 
     html += '</div>';
+    html += '<div id="whereSection"></div>';
     canvas.innerHTML = html;
+    renderWhere();
 }
 
 // =============================================================================
