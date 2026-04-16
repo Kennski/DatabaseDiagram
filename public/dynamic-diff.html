@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Schema Diff — DatabaseDiagram</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    min-height: 100vh;
+}
+
+/* Global nav bar */
+.global-nav { position: sticky; top: 0; z-index: 100; background: #0f172a; border-bottom: 1px solid #1e293b; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 50px; }
+.nav-left { display: flex; align-items: center; gap: 12px; }
+.nav-left .app-name { color: #f8fafc; font-size: 15px; font-weight: 700; text-decoration: none; }
+.nav-left .app-name:hover { color: #818cf8; }
+.db-badge { background: #1e293b; border: 1px solid #334155; border-radius: 20px; padding: 4px 12px; font-size: 12px; color: #94a3b8; white-space: nowrap; }
+.nav-center { display: flex; align-items: center; gap: 4px; }
+.nav-tab { color: #94a3b8; text-decoration: none; font-size: 13px; font-weight: 500; padding: 14px 16px; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; }
+.nav-tab:hover { color: #e2e8f0; }
+.nav-tab.active { color: #e2e8f0; border-bottom-color: #6366f1; }
+.nav-tab.diff-tab { opacity: 0.4; }
+.nav-tab.diff-tab.has-diff { opacity: 1; }
+.nav-right { display: flex; align-items: center; gap: 10px; }
+.nav-new-btn { border: 1px solid #334155; background: transparent; color: #94a3b8; border-radius: 8px; padding: 6px 14px; font-size: 12px; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.nav-new-btn:hover { border-color: #6366f1; color: #e2e8f0; }
+
+/* Export dropdown */
+.export-wrapper { position: relative; display: inline-block; }
+.export-btn { background: linear-gradient(135deg, #6366f1, #4f46e5); color: #fff; border: none; padding: 8px 18px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.export-btn:hover { background: linear-gradient(135deg, #818cf8, #6366f1); }
+.export-btn .arrow { font-size: 10px; transition: transform 0.2s; }
+.export-wrapper.open .export-btn .arrow { transform: rotate(180deg); }
+.export-menu { display: none; position: absolute; right: 0; top: calc(100% + 6px); background: #1e293b; border: 1px solid #334155; border-radius: 10px; min-width: 220px; box-shadow: 0 8px 30px rgba(0,0,0,0.4); z-index: 1000; overflow: hidden; }
+.export-wrapper.open .export-menu { display: block; }
+.export-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; background: none; border: none; color: #e2e8f0; font-size: 14px; cursor: pointer; text-align: left; }
+.export-menu button:hover { background: #334155; }
+.export-menu button .icon { width: 20px; text-align: center; font-size: 16px; }
+.export-menu hr { border: none; border-top: 1px solid #334155; margin: 4px 0; }
+
+/* Toast */
+.toast-container { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.toast { background: rgba(15, 23, 42, 0.95); color: #e2e8f0; padding: 12px 24px; border-radius: 8px; font-size: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); border: 1px solid rgba(99,102,241,0.3); animation: toastIn 0.3s ease; pointer-events: auto; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+.toast.fade-out { animation: toastOut 0.3s ease forwards; }
+@keyframes toastOut { to { opacity: 0; transform: translateY(12px); } }
+
+/* Source panels */
+.diff-container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+.source-panels { display: flex; gap: 20px; margin-bottom: 20px; }
+.source-panel { flex: 1; background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; }
+.source-panel h3 { color: #f8fafc; font-size: 16px; margin-bottom: 12px; }
+.source-select { width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: #e2e8f0; font-size: 14px; margin-bottom: 12px; }
+.source-fields { display: none; }
+.source-fields.active { display: block; }
+.source-badge { display: none; background: rgba(34,197,94,0.15); border: 1px solid #22c55e; color: #22c55e; padding: 6px 14px; border-radius: 20px; font-size: 13px; margin-top: 10px; }
+.form-group { margin-bottom: 10px; }
+.form-group label { display: block; color: #94a3b8; font-size: 12px; margin-bottom: 4px; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: #e2e8f0; font-size: 13px; }
+.form-group textarea { height: 120px; font-family: 'Cascadia Code', monospace; resize: vertical; }
+.form-row { display: flex; gap: 10px; }
+.form-row .form-group { flex: 1; }
+.load-btn { padding: 8px 20px; background: #6366f1; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; margin-top: 8px; }
+.load-btn:hover { background: #818cf8; }
+.current-schema-info { font-size: 13px; color: #94a3b8; margin-bottom: 8px; }
+.current-schema-info .available { color: #22c55e; }
+.current-schema-info .unavailable { color: #ef4444; }
+
+/* Compare button */
+.compare-btn { display: block; margin: 0 auto 30px; padding: 12px 32px; background: linear-gradient(135deg, #6366f1, #4f46e5); color: #fff; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; }
+.compare-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.compare-btn:not(:disabled):hover { background: linear-gradient(135deg, #818cf8, #6366f1); }
+
+/* Diff results */
+.diff-summary { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 16px 24px; text-align: center; margin-bottom: 24px; color: #e2e8f0; font-size: 15px; }
+.diff-arrow { color: #6366f1; margin: 0 12px; }
+.diff-stats { margin-top: 8px; display: flex; gap: 16px; justify-content: center; font-size: 13px; }
+.stat-added { color: #22c55e; } .stat-removed { color: #ef4444; } .stat-modified { color: #eab308; } .stat-unchanged { color: #94a3b8; }
+.diff-section { margin-bottom: 24px; }
+.diff-heading { font-size: 16px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #334155; }
+.diff-heading.added { color: #22c55e; } .diff-heading.removed { color: #ef4444; } .diff-heading.modified { color: #eab308; }
+.diff-card { border: 1px solid #334155; border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
+.diff-card.added { border-color: #22c55e; background: rgba(34,197,94,0.05); }
+.diff-card.removed { border-color: #ef4444; background: rgba(239,68,68,0.05); }
+.diff-card.modified { border-color: #eab308; background: rgba(234,179,8,0.05); }
+.diff-card-header { padding: 10px 16px; font-weight: 600; color: #f8fafc; background: rgba(255,255,255,0.03); }
+.diff-card-body { padding: 12px 16px; }
+.diff-card-body table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.diff-card-body td { padding: 4px 8px; border-top: 1px solid rgba(255,255,255,0.05); }
+.col-type { color: #818cf8; font-family: monospace; font-size: 12px; }
+.col-count { font-weight: 400; font-size: 12px; color: #94a3b8; }
+.change-group { margin-bottom: 8px; }
+.change-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.change-label.added { color: #22c55e; } .change-label.removed { color: #ef4444; } .change-label.modified { color: #eab308; }
+.change-row { padding: 4px 0; font-size: 13px; }
+.change-row.added { color: #86efac; } .change-row.removed { color: #fca5a5; } .change-row.modified { color: #fde68a; }
+.change-detail { color: #94a3b8; font-size: 12px; }
+.unchanged-toggle { background: #1e293b; border: 1px solid #334155; color: #94a3b8; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.unchanged-toggle:hover { border-color: #475569; color: #e2e8f0; }
+.unchanged-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.unchanged-list.hidden { display: none; }
+.unchanged-chip { background: #1e293b; border: 1px solid #334155; padding: 4px 12px; border-radius: 20px; font-size: 12px; color: #94a3b8; }
+</style>
+</head>
+<body>
+
+<div class="toast-container" id="toastContainer"></div>
+<nav class="global-nav">
+    <div class="nav-left">
+        <a href="/" class="app-name">DatabaseDiagram</a>
+        <span class="db-badge" id="dbBadge"></span>
+    </div>
+    <div class="nav-center">
+        <a href="/dynamic-list.html" class="nav-tab">Table List</a>
+        <a href="/dynamic-visual.html" class="nav-tab">Visual Diagram</a>
+        <a href="/dynamic-analysis.html" class="nav-tab">Analysis</a>
+        <a href="/dynamic-diff.html" class="nav-tab active">Diff</a>
+    </div>
+    <div class="nav-right">
+        <div class="export-wrapper" id="exportWrapper">
+            <button class="export-btn" onclick="document.getElementById('exportWrapper').classList.toggle('open')">
+                <span>Export / Share</span><span class="arrow">&#9660;</span>
+            </button>
+            <div class="export-menu">
+                <button onclick="shareLink()"><span class="icon">&#128279;</span> Share Link</button>
+                <button onclick="downloadMarkdown()"><span class="icon">&#128221;</span> Markdown</button>
+                <button onclick="downloadMermaid()"><span class="icon">&#129500;</span> Mermaid</button>
+                <button onclick="copyMermaid()"><span class="icon">&#128203;</span> Copy Mermaid</button>
+            </div>
+        </div>
+        <a href="/" class="nav-new-btn">&#8592; New Connection</a>
+    </div>
+</nav>
+
+<div class="diff-container">
+    <div class="source-panels">
+        <!-- Schema A panel -->
+        <div class="source-panel" id="a-panel">
+            <h3>Schema A</h3>
+            <select class="source-select" id="a-source-type" onchange="switchSource('a')">
+                <option value="current">Current Schema</option>
+                <option value="live">Live Connection</option>
+                <option value="sql">SQL Paste</option>
+            </select>
+
+            <div class="source-fields active" id="a-fields-current">
+                <div class="current-schema-info" id="a-current-info"></div>
+                <button class="load-btn" onclick="loadCurrentSchema('a')">Use Current</button>
+            </div>
+
+            <div class="source-fields" id="a-fields-live">
+                <div class="form-group">
+                    <label>Database Type</label>
+                    <select id="a-dbType">
+                        <option value="mysql">MySQL</option>
+                        <option value="mariadb">MariaDB</option>
+                        <option value="postgres">PostgreSQL</option>
+                        <option value="mssql">SQL Server</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Host</label>
+                        <input type="text" id="a-host" placeholder="localhost">
+                    </div>
+                    <div class="form-group">
+                        <label>Port</label>
+                        <input type="text" id="a-port" placeholder="3306">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>User</label>
+                        <input type="text" id="a-user" placeholder="root">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="a-password">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Database</label>
+                    <input type="text" id="a-database" placeholder="mydb">
+                </div>
+                <button class="load-btn" onclick="loadLiveSchema('a')">Connect</button>
+            </div>
+
+            <div class="source-fields" id="a-fields-sql">
+                <div class="form-group">
+                    <label>Paste SQL (CREATE TABLE statements)</label>
+                    <textarea id="a-sql" placeholder="CREATE TABLE users (&#10;  id INT PRIMARY KEY,&#10;  name VARCHAR(255)&#10;);"></textarea>
+                </div>
+                <button class="load-btn" onclick="parseSqlSchema('a')">Parse</button>
+            </div>
+
+            <div class="source-badge" id="a-badge"></div>
+        </div>
+
+        <!-- Schema B panel -->
+        <div class="source-panel" id="b-panel">
+            <h3>Schema B</h3>
+            <select class="source-select" id="b-source-type" onchange="switchSource('b')">
+                <option value="current">Current Schema</option>
+                <option value="live">Live Connection</option>
+                <option value="sql">SQL Paste</option>
+            </select>
+
+            <div class="source-fields active" id="b-fields-current">
+                <div class="current-schema-info" id="b-current-info"></div>
+                <button class="load-btn" onclick="loadCurrentSchema('b')">Use Current</button>
+            </div>
+
+            <div class="source-fields" id="b-fields-live">
+                <div class="form-group">
+                    <label>Database Type</label>
+                    <select id="b-dbType">
+                        <option value="mysql">MySQL</option>
+                        <option value="mariadb">MariaDB</option>
+                        <option value="postgres">PostgreSQL</option>
+                        <option value="mssql">SQL Server</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Host</label>
+                        <input type="text" id="b-host" placeholder="localhost">
+                    </div>
+                    <div class="form-group">
+                        <label>Port</label>
+                        <input type="text" id="b-port" placeholder="3306">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>User</label>
+                        <input type="text" id="b-user" placeholder="root">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="b-password">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Database</label>
+                    <input type="text" id="b-database" placeholder="mydb">
+                </div>
+                <button class="load-btn" onclick="loadLiveSchema('b')">Connect</button>
+            </div>
+
+            <div class="source-fields" id="b-fields-sql">
+                <div class="form-group">
+                    <label>Paste SQL (CREATE TABLE statements)</label>
+                    <textarea id="b-sql" placeholder="CREATE TABLE users (&#10;  id INT PRIMARY KEY,&#10;  name VARCHAR(255)&#10;);"></textarea>
+                </div>
+                <button class="load-btn" onclick="parseSqlSchema('b')">Parse</button>
+            </div>
+
+            <div class="source-badge" id="b-badge"></div>
+        </div>
+    </div>
+
+    <button class="compare-btn" id="compareBtn" disabled>Compare Schemas</button>
+
+    <div id="diffResults"></div>
+</div>
+
+<script>
+// --- Escape HTML ---
+function esc(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// --- Toast ---
+function showToast(msg, duration) {
+    if (duration === undefined) duration = 3000;
+    var container = document.getElementById('toastContainer');
+    var toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = msg;
+    container.appendChild(toast);
+    setTimeout(function() {
+        toast.classList.add('fade-out');
+        toast.addEventListener('animationend', function() { toast.remove(); });
+    }, duration);
+}
+
+// --- Nav bar: db badge ---
+(function() {
+    var raw = sessionStorage.getItem('dbdiagram_data');
+    if (raw) {
+        try {
+            var data = JSON.parse(raw);
+            var badge = document.getElementById('dbBadge');
+            if (badge && data.database) {
+                badge.textContent = data.database + (data.version ? ' (' + data.version + ')' : '');
+            }
+        } catch (e) {}
+    }
+})();
+
+// --- Current schema availability ---
+(function() {
+    var raw = sessionStorage.getItem('dbdiagram_data');
+    var infoA = document.getElementById('a-current-info');
+    var infoB = document.getElementById('b-current-info');
+    if (raw) {
+        try {
+            var data = JSON.parse(raw);
+            var label = (data.database || 'Database') + ' — ' + Object.keys(data.schema).length + ' tables';
+            infoA.innerHTML = '<span class="available">Available:</span> ' + esc(label);
+            infoB.innerHTML = '<span class="available">Available:</span> ' + esc(label);
+        } catch (e) {
+            infoA.innerHTML = '<span class="unavailable">No current schema loaded</span>';
+            infoB.innerHTML = '<span class="unavailable">No current schema loaded</span>';
+        }
+    } else {
+        infoA.innerHTML = '<span class="unavailable">No current schema loaded</span>';
+        infoB.innerHTML = '<span class="unavailable">No current schema loaded</span>';
+    }
+})();
+
+// --- Source selector logic ---
+var schemaA = null;
+var schemaB = null;
+
+function updateCompareButton() {
+    document.getElementById('compareBtn').disabled = !(schemaA && schemaB);
+}
+
+function showBadge(prefix, name, count) {
+    var badge = document.getElementById(prefix + '-badge');
+    badge.textContent = name + ' \u2014 ' + count + ' tables';
+    badge.style.display = 'inline-block';
+}
+
+function switchSource(panel) {
+    var prefix = panel;
+    var type = document.getElementById(prefix + '-source-type').value;
+    var fields = document.querySelectorAll('#' + prefix + '-panel .source-fields');
+    for (var i = 0; i < fields.length; i++) { fields[i].classList.remove('active'); }
+    var target = document.getElementById(prefix + '-fields-' + type);
+    if (target) target.classList.add('active');
+}
+
+function loadCurrentSchema(panel) {
+    var raw = sessionStorage.getItem('dbdiagram_data');
+    if (!raw) { showToast('No current schema loaded'); return; }
+    var data = JSON.parse(raw);
+    if (panel === 'a') schemaA = data; else schemaB = data;
+    showBadge(panel, data.database || 'Database', Object.keys(data.schema).length);
+    updateCompareButton();
+    showToast('Loaded current schema');
+}
+
+async function loadLiveSchema(panel) {
+    var p = panel;
+    var dbType = document.getElementById(p + '-dbType').value;
+    var host = document.getElementById(p + '-host').value;
+    var port = document.getElementById(p + '-port').value;
+    var user = document.getElementById(p + '-user').value;
+    var password = document.getElementById(p + '-password').value;
+    var database = document.getElementById(p + '-database').value;
+    if (!host || !database) { showToast('Host and database are required'); return; }
+    try {
+        showToast('Connecting...');
+        var res = await fetch('/api/schema', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dbType: dbType, host: host, port: port, user: user, password: password, database: database })
+        });
+        var data = await res.json();
+        if (data.error) { showToast('Error: ' + data.error); return; }
+        if (panel === 'a') schemaA = data; else schemaB = data;
+        showBadge(p, data.database, Object.keys(data.schema).length);
+        updateCompareButton();
+        showToast('Connected!');
+    } catch (err) { showToast('Connection failed: ' + err.message); }
+}
+
+async function parseSqlSchema(panel) {
+    var p = panel;
+    var sql = document.getElementById(p + '-sql').value.trim();
+    if (!sql) { showToast('Paste some SQL first'); return; }
+    try {
+        showToast('Parsing...');
+        var res = await fetch('/api/schema-from-sql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sql: sql })
+        });
+        var data = await res.json();
+        if (data.error) { showToast('Error: ' + data.error); return; }
+        if (panel === 'a') schemaA = data; else schemaB = data;
+        showBadge(p, data.database, Object.keys(data.schema).length);
+        updateCompareButton();
+        showToast('Parsed ' + Object.keys(data.schema).length + ' tables');
+    } catch (err) { showToast('Parse failed: ' + err.message); }
+}
+
+// --- Diff engine ---
+function computeDiff(a, b) {
+    var sA = a.schema;
+    var sB = b.schema;
+    var added = [], removed = [], modified = [], unchanged = [];
+
+    var nameB, nameA;
+    for (nameB in sB) {
+        if (!sB.hasOwnProperty(nameB)) continue;
+        if (!sA[nameB] && !sA[nameB.toLowerCase()]) {
+            added.push({ name: nameB, table: sB[nameB] });
+        }
+    }
+    for (nameA in sA) {
+        if (!sA.hasOwnProperty(nameA)) continue;
+        if (!sB[nameA] && !sB[nameA.toLowerCase()]) {
+            removed.push({ name: nameA, table: sA[nameA] });
+        }
+    }
+    for (nameA in sA) {
+        if (!sA.hasOwnProperty(nameA)) continue;
+        var tblA = sA[nameA];
+        var tblB = sB[nameA] || sB[nameA.toLowerCase()];
+        if (!tblB) continue;
+        var changes = diffTable(tblA, tblB);
+        if (changes.hasChanges) modified.push({ name: nameA, changes: changes });
+        else unchanged.push(nameA);
+    }
+
+    return {
+        added: added, removed: removed, modified: modified, unchanged: unchanged,
+        nameA: a.database || 'Schema A', nameB: b.database || 'Schema B',
+        countA: Object.keys(sA).length, countB: Object.keys(sB).length
+    };
+}
+
+function diffTable(a, b) {
+    var result = { addedCols: [], removedCols: [], changedCols: [], addedFKs: [], removedFKs: [], addedKeys: [], removedKeys: [], pkChanged: false, hasChanges: false };
+
+    var colsA = new Map(a.columns.map(function(c) { return [c.name, c]; }));
+    var colsB = new Map(b.columns.map(function(c) { return [c.name, c]; }));
+
+    colsB.forEach(function(col, name) {
+        if (!colsA.has(name)) { result.addedCols.push(col); result.hasChanges = true; }
+    });
+    colsA.forEach(function(col, name) {
+        if (!colsB.has(name)) { result.removedCols.push(col); result.hasChanges = true; }
+    });
+    colsA.forEach(function(colA, name) {
+        var colB = colsB.get(name);
+        if (!colB) return;
+        var diffs = [];
+        if (colA.type !== colB.type) diffs.push({ field: 'type', from: colA.type, to: colB.type });
+        if (colA.nullable !== colB.nullable) diffs.push({ field: 'nullable', from: colA.nullable, to: colB.nullable });
+        if (colA.auto_increment !== colB.auto_increment) diffs.push({ field: 'auto_increment', from: colA.auto_increment, to: colB.auto_increment });
+        if (diffs.length > 0) { result.changedCols.push({ name: name, diffs: diffs }); result.hasChanges = true; }
+    });
+
+    var pkA = (a.primary_keys || []).slice().sort().join(',');
+    var pkB = (b.primary_keys || []).slice().sort().join(',');
+    if (pkA !== pkB) { result.pkChanged = true; result.hasChanges = true; }
+
+    var fkKey = function(fk) { return fk.columns.join(',') + '>' + fk.ref_table + '.' + fk.ref_columns.join(','); };
+    var fkSetA = new Set((a.foreign_keys || []).map(fkKey));
+    var fkSetB = new Set((b.foreign_keys || []).map(fkKey));
+    (b.foreign_keys || []).forEach(function(fk) { if (!fkSetA.has(fkKey(fk))) { result.addedFKs.push(fk); result.hasChanges = true; } });
+    (a.foreign_keys || []).forEach(function(fk) { if (!fkSetB.has(fkKey(fk))) { result.removedFKs.push(fk); result.hasChanges = true; } });
+
+    var idxKey = function(k) { return k.columns.slice().sort().join(','); };
+    var idxSetA = new Set((a.keys || []).map(idxKey));
+    var idxSetB = new Set((b.keys || []).map(idxKey));
+    (b.keys || []).forEach(function(k) { if (!idxSetA.has(idxKey(k))) { result.addedKeys.push(k); result.hasChanges = true; } });
+    (a.keys || []).forEach(function(k) { if (!idxSetB.has(idxKey(k))) { result.removedKeys.push(k); result.hasChanges = true; } });
+
+    return result;
+}
+
+// --- Render diff results ---
+function renderDiff(diff) {
+    var html = '';
+
+    // Summary bar
+    html += '<div class="diff-summary">';
+    html += '<strong>' + esc(diff.nameA) + '</strong> <span class="col-count">(' + diff.countA + ' tables)</span>';
+    html += '<span class="diff-arrow">\u2192</span>';
+    html += '<strong>' + esc(diff.nameB) + '</strong> <span class="col-count">(' + diff.countB + ' tables)</span>';
+    html += '<div class="diff-stats">';
+    html += '<span class="stat-added">+' + diff.added.length + ' added</span>';
+    html += '<span class="stat-removed">\u2212' + diff.removed.length + ' removed</span>';
+    html += '<span class="stat-modified">\u25CF ' + diff.modified.length + ' modified</span>';
+    html += '<span class="stat-unchanged">' + diff.unchanged.length + ' unchanged</span>';
+    html += '</div></div>';
+
+    // Added tables
+    if (diff.added.length > 0) {
+        html += '<div class="diff-section">';
+        html += '<div class="diff-heading added">+ Added Tables (' + diff.added.length + ')</div>';
+        for (var i = 0; i < diff.added.length; i++) {
+            var t = diff.added[i];
+            html += '<div class="diff-card added">';
+            html += '<div class="diff-card-header">' + esc(t.name) + ' <span class="col-count">(' + t.table.columns.length + ' columns)</span></div>';
+            html += '<div class="diff-card-body"><table>';
+            for (var j = 0; j < t.table.columns.length; j++) {
+                var c = t.table.columns[j];
+                var extras = [];
+                if ((t.table.primary_keys || []).indexOf(c.name) !== -1) extras.push('PK');
+                if (c.auto_increment) extras.push('AI');
+                if (c.nullable === false) extras.push('NOT NULL');
+                html += '<tr><td>' + esc(c.name) + '</td><td class="col-type">' + esc(c.type) + '</td>';
+                html += '<td class="col-count">' + (extras.length ? extras.join(', ') : '') + '</td></tr>';
+            }
+            html += '</table></div></div>';
+        }
+        html += '</div>';
+    }
+
+    // Removed tables
+    if (diff.removed.length > 0) {
+        html += '<div class="diff-section">';
+        html += '<div class="diff-heading removed">\u2212 Removed Tables (' + diff.removed.length + ')</div>';
+        for (var i = 0; i < diff.removed.length; i++) {
+            var t = diff.removed[i];
+            html += '<div class="diff-card removed">';
+            html += '<div class="diff-card-header">' + esc(t.name) + ' <span class="col-count">(' + t.table.columns.length + ' columns)</span></div>';
+            html += '<div class="diff-card-body"><table>';
+            for (var j = 0; j < t.table.columns.length; j++) {
+                var c = t.table.columns[j];
+                var extras = [];
+                if ((t.table.primary_keys || []).indexOf(c.name) !== -1) extras.push('PK');
+                if (c.auto_increment) extras.push('AI');
+                if (c.nullable === false) extras.push('NOT NULL');
+                html += '<tr><td>' + esc(c.name) + '</td><td class="col-type">' + esc(c.type) + '</td>';
+                html += '<td class="col-count">' + (extras.length ? extras.join(', ') : '') + '</td></tr>';
+            }
+            html += '</table></div></div>';
+        }
+        html += '</div>';
+    }
+
+    // Modified tables
+    if (diff.modified.length > 0) {
+        html += '<div class="diff-section">';
+        html += '<div class="diff-heading modified">\u25CF Modified Tables (' + diff.modified.length + ')</div>';
+        for (var i = 0; i < diff.modified.length; i++) {
+            var m = diff.modified[i];
+            var ch = m.changes;
+            html += '<div class="diff-card modified">';
+            html += '<div class="diff-card-header">' + esc(m.name) + '</div>';
+            html += '<div class="diff-card-body">';
+
+            // Added columns
+            if (ch.addedCols.length > 0) {
+                html += '<div class="change-group"><div class="change-label added">+ Added Columns</div>';
+                for (var j = 0; j < ch.addedCols.length; j++) {
+                    var c = ch.addedCols[j];
+                    html += '<div class="change-row added">' + esc(c.name) + ' <span class="col-type">' + esc(c.type) + '</span></div>';
+                }
+                html += '</div>';
+            }
+
+            // Removed columns
+            if (ch.removedCols.length > 0) {
+                html += '<div class="change-group"><div class="change-label removed">\u2212 Removed Columns</div>';
+                for (var j = 0; j < ch.removedCols.length; j++) {
+                    var c = ch.removedCols[j];
+                    html += '<div class="change-row removed">' + esc(c.name) + ' <span class="col-type">' + esc(c.type) + '</span></div>';
+                }
+                html += '</div>';
+            }
+
+            // Changed columns
+            if (ch.changedCols.length > 0) {
+                html += '<div class="change-group"><div class="change-label modified">\u25CF Changed Columns</div>';
+                for (var j = 0; j < ch.changedCols.length; j++) {
+                    var cc = ch.changedCols[j];
+                    html += '<div class="change-row modified">' + esc(cc.name);
+                    for (var k = 0; k < cc.diffs.length; k++) {
+                        var d = cc.diffs[k];
+                        html += ' <span class="change-detail">' + esc(d.field) + ': ' + esc(String(d.from)) + ' \u2192 ' + esc(String(d.to)) + '</span>';
+                    }
+                    html += '</div>';
+                }
+                html += '</div>';
+            }
+
+            // PK changes
+            if (ch.pkChanged) {
+                html += '<div class="change-group"><div class="change-label modified">\u25CF Primary Key Changed</div></div>';
+            }
+
+            // FK changes
+            if (ch.addedFKs.length > 0) {
+                html += '<div class="change-group"><div class="change-label added">+ Added Foreign Keys</div>';
+                for (var j = 0; j < ch.addedFKs.length; j++) {
+                    var fk = ch.addedFKs[j];
+                    html += '<div class="change-row added">' + esc(fk.columns.join(', ')) + ' \u2192 ' + esc(fk.ref_table) + '(' + esc(fk.ref_columns.join(', ')) + ')</div>';
+                }
+                html += '</div>';
+            }
+            if (ch.removedFKs.length > 0) {
+                html += '<div class="change-group"><div class="change-label removed">\u2212 Removed Foreign Keys</div>';
+                for (var j = 0; j < ch.removedFKs.length; j++) {
+                    var fk = ch.removedFKs[j];
+                    html += '<div class="change-row removed">' + esc(fk.columns.join(', ')) + ' \u2192 ' + esc(fk.ref_table) + '(' + esc(fk.ref_columns.join(', ')) + ')</div>';
+                }
+                html += '</div>';
+            }
+
+            // Index changes
+            if (ch.addedKeys.length > 0) {
+                html += '<div class="change-group"><div class="change-label added">+ Added Indexes</div>';
+                for (var j = 0; j < ch.addedKeys.length; j++) {
+                    var k = ch.addedKeys[j];
+                    html += '<div class="change-row added">' + esc((k.name || 'index')) + ' (' + esc(k.columns.join(', ')) + ')</div>';
+                }
+                html += '</div>';
+            }
+            if (ch.removedKeys.length > 0) {
+                html += '<div class="change-group"><div class="change-label removed">\u2212 Removed Indexes</div>';
+                for (var j = 0; j < ch.removedKeys.length; j++) {
+                    var k = ch.removedKeys[j];
+                    html += '<div class="change-row removed">' + esc((k.name || 'index')) + ' (' + esc(k.columns.join(', ')) + ')</div>';
+                }
+                html += '</div>';
+            }
+
+            html += '</div></div>';
+        }
+        html += '</div>';
+    }
+
+    // Unchanged tables
+    if (diff.unchanged.length > 0) {
+        html += '<div class="diff-section">';
+        html += '<button class="unchanged-toggle" onclick="var list=document.getElementById(\'unchangedList\');list.classList.toggle(\'hidden\');this.textContent=list.classList.contains(\'hidden\')?\'Show ' + diff.unchanged.length + ' unchanged tables\':\'Hide unchanged tables\'">';
+        html += 'Show ' + diff.unchanged.length + ' unchanged tables</button>';
+        html += '<div class="unchanged-list hidden" id="unchangedList">';
+        for (var i = 0; i < diff.unchanged.length; i++) {
+            html += '<span class="unchanged-chip">' + esc(diff.unchanged[i]) + '</span>';
+        }
+        html += '</div></div>';
+    }
+
+    // No changes
+    if (diff.added.length === 0 && diff.removed.length === 0 && diff.modified.length === 0) {
+        html += '<div class="diff-summary" style="margin-top:20px;">Schemas are identical - no differences found.</div>';
+    }
+
+    document.getElementById('diffResults').innerHTML = html;
+}
+
+// --- Wire compare button ---
+document.getElementById('compareBtn').addEventListener('click', function() {
+    if (!schemaA || !schemaB) return;
+    showToast('Comparing schemas...');
+    var diff = computeDiff(schemaA, schemaB);
+    renderDiff(diff);
+    sessionStorage.setItem('dbdiagram_diff_a', JSON.stringify(schemaA));
+    sessionStorage.setItem('dbdiagram_diff_b', JSON.stringify(schemaB));
+});
+
+// --- Export stubs ---
+function shareLink() { showToast('Share Link \u2014 coming soon'); }
+function downloadMarkdown() { showToast('Diff report \u2014 coming soon'); }
+function downloadMermaid() { showToast('Mermaid export \u2014 coming soon'); }
+function copyMermaid() { showToast('Copy Mermaid \u2014 coming soon'); }
+
+// --- Click-outside handler for export dropdown ---
+document.addEventListener('click', function(e) {
+    var wrapper = document.getElementById('exportWrapper');
+    if (wrapper && !wrapper.contains(e.target)) wrapper.classList.remove('open');
+});
+</script>
+</body>
+</html>
