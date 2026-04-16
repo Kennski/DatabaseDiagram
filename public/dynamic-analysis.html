@@ -5,37 +5,63 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Database Diagram — Schema Analysis</title>
 <style>
+:root {
+    --bg-primary: #0f172a;
+    --bg-card: #1e293b;
+    --bg-hover: #334155;
+    --border: #334155;
+    --border-light: #1e293b;
+    --text-primary: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --accent-bg: rgba(99,102,241,0.12);
+}
+[data-theme="light"] {
+    --bg-primary: #f8fafc;
+    --bg-card: #ffffff;
+    --bg-hover: #f1f5f9;
+    --border: #e2e8f0;
+    --border-light: #f1f5f9;
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --text-muted: #94a3b8;
+    --accent: #4f46e5;
+    --accent-hover: #6366f1;
+    --accent-bg: rgba(79,70,229,0.08);
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
     font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-    background: #0f172a;
-    color: #e2e8f0;
+    background: var(--bg-primary);
+    color: var(--text-primary);
     min-height: 100vh;
 }
 .header {
-    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-    border-bottom: 1px solid #334155;
+    background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-primary) 100%);
+    border-bottom: 1px solid var(--border);
     padding: 24px 32px;
 }
-.header h1 { font-size: 24px; font-weight: 700; color: #f8fafc; margin-bottom: 4px; }
-.header .subtitle { font-size: 14px; color: #94a3b8; }
+.header h1 { font-size: 24px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
+.header .subtitle { font-size: 14px; color: var(--text-secondary); }
 /* Global nav bar */
-.global-nav { position: sticky; top: 0; z-index: 100; background: #0f172a; border-bottom: 1px solid #1e293b; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 50px; }
+.global-nav { position: sticky; top: 0; z-index: 100; background: var(--bg-primary); border-bottom: 1px solid var(--border-light); padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 50px; }
 .nav-left { display: flex; align-items: center; gap: 12px; }
-.nav-left .app-name { color: #f8fafc; font-size: 15px; font-weight: 700; text-decoration: none; }
-.nav-left .app-name:hover { color: #818cf8; }
-.db-badge { background: #1e293b; border: 1px solid #334155; border-radius: 20px; padding: 4px 12px; font-size: 12px; color: #94a3b8; white-space: nowrap; }
+.nav-left .app-name { color: var(--text-primary); font-size: 15px; font-weight: 700; text-decoration: none; }
+.nav-left .app-name:hover { color: var(--accent-hover); }
+.db-badge { background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
 .nav-center { display: flex; align-items: center; gap: 4px; }
-.nav-tab { color: #94a3b8; text-decoration: none; font-size: 13px; font-weight: 500; padding: 14px 16px; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; }
-.nav-tab:hover { color: #e2e8f0; }
-.nav-tab.active { color: #e2e8f0; border-bottom-color: #6366f1; }
+.nav-tab { color: var(--text-secondary); text-decoration: none; font-size: 13px; font-weight: 500; padding: 14px 16px; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; }
+.nav-tab:hover { color: var(--text-primary); }
+.nav-tab.active { color: var(--text-primary); border-bottom-color: var(--accent); }
 .nav-tab.diff-tab { opacity: 0.4; }
 .nav-tab.diff-tab.has-diff { opacity: 1; }
 .nav-tab.query-tab { opacity: 0.4; }
 .nav-tab.query-tab.has-query { opacity: 1; }
 .nav-right { display: flex; align-items: center; gap: 10px; }
-.nav-new-btn { border: 1px solid #334155; background: transparent; color: #94a3b8; border-radius: 8px; padding: 6px 14px; font-size: 12px; text-decoration: none; white-space: nowrap; cursor: pointer; }
-.nav-new-btn:hover { border-color: #6366f1; color: #e2e8f0; }
+.nav-new-btn { border: 1px solid var(--border); background: transparent; color: var(--text-secondary); border-radius: 8px; padding: 6px 14px; font-size: 12px; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.nav-new-btn:hover { border-color: var(--accent); color: var(--text-primary); }
 
 /* Score card */
 .score-row {
@@ -47,8 +73,8 @@ body {
 .score-card {
     flex: 1;
     min-width: 140px;
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 20px;
     text-align: center;
@@ -62,7 +88,7 @@ body {
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: #94a3b8;
+    color: var(--text-secondary);
 }
 .score-card.errors .value { color: #f87171; }
 .score-card.warnings .value { color: #fbbf24; }
@@ -101,7 +127,7 @@ body {
 .section-header .toggle-icon {
     font-size: 12px;
     transition: transform 0.2s;
-    color: #64748b;
+    color: var(--text-muted);
 }
 .section-header.collapsed .toggle-icon { transform: rotate(-90deg); }
 
@@ -114,8 +140,8 @@ body {
 
 /* Finding card */
 .finding {
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 10px;
     padding: 14px 18px;
     border-left: 4px solid;
@@ -145,7 +171,7 @@ body {
 .finding.tip .severity { background: rgba(96,165,250,0.15); color: #60a5fa; }
 .finding .finding-desc {
     font-size: 13px;
-    color: #94a3b8;
+    color: var(--text-secondary);
     line-height: 1.6;
 }
 .finding .finding-desc code {
@@ -185,7 +211,7 @@ body {
     display: none;
     margin-top: 8px;
     font-size: 12px;
-    color: #94a3b8;
+    color: var(--text-secondary);
     line-height: 1.7;
 }
 .finding .detail-body.open { display: block; }
@@ -202,7 +228,7 @@ body {
     font-size: 12px;
 }
 .finding .detail-body th {
-    color: #64748b;
+    color: var(--text-muted);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.3px;
@@ -212,9 +238,9 @@ body {
 .no-data {
     text-align: center;
     padding: 80px 32px;
-    color: #64748b;
+    color: var(--text-muted);
 }
-.no-data h2 { color: #94a3b8; margin-bottom: 8px; }
+.no-data h2 { color: var(--text-secondary); margin-bottom: 8px; }
 .no-data a { color: #38bdf8; text-decoration: none; }
 .no-data a:hover { text-decoration: underline; }
 
@@ -229,10 +255,14 @@ body {
 
 /* Toast notifications */
 .toast-container { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
-.toast { background: rgba(15, 23, 42, 0.95); color: #e2e8f0; padding: 12px 24px; border-radius: 8px; font-size: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); border: 1px solid rgba(99,102,241,0.3); animation: toastIn 0.3s ease; pointer-events: auto; }
+.toast { background: var(--bg-card); color: var(--text-primary); padding: 12px 24px; border-radius: 8px; font-size: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); border: 1px solid rgba(99,102,241,0.3); animation: toastIn 0.3s ease; pointer-events: auto; }
 @keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 .toast.fade-out { animation: toastOut 0.3s ease forwards; }
 @keyframes toastOut { to { opacity: 0; transform: translateY(12px); } }
+
+/* Theme toggle */
+.theme-toggle { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 16px; line-height: 1; }
+.theme-toggle:hover { border-color: var(--accent); }
 
 /* Export dropdown */
 .export-wrapper { position: relative; display: inline-block; }
@@ -240,12 +270,12 @@ body {
 .export-btn:hover { background: linear-gradient(135deg, #818cf8, #6366f1); }
 .export-btn .arrow { font-size: 10px; transition: transform 0.2s; }
 .export-wrapper.open .export-btn .arrow { transform: rotate(180deg); }
-.export-menu { display: none; position: absolute; right: 0; top: calc(100% + 6px); background: #1e293b; border: 1px solid #334155; border-radius: 10px; min-width: 220px; box-shadow: 0 8px 30px rgba(0,0,0,0.4); z-index: 1000; overflow: hidden; }
+.export-menu { display: none; position: absolute; right: 0; top: calc(100% + 6px); background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; min-width: 220px; box-shadow: 0 8px 30px rgba(0,0,0,0.4); z-index: 1000; overflow: hidden; }
 .export-wrapper.open .export-menu { display: block; }
-.export-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; background: none; border: none; color: #e2e8f0; font-size: 14px; cursor: pointer; text-align: left; }
-.export-menu button:hover { background: #334155; }
+.export-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; background: none; border: none; color: var(--text-primary); font-size: 14px; cursor: pointer; text-align: left; }
+.export-menu button:hover { background: var(--bg-hover); }
 .export-menu button .icon { width: 20px; text-align: center; font-size: 16px; }
-.export-menu hr { border: none; border-top: 1px solid #334155; margin: 4px 0; }
+.export-menu hr { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
 </style>
 </head>
 <body>
@@ -263,6 +293,7 @@ body {
         <a href="/dynamic-query.html" class="nav-tab query-tab" id="queryTab">Query</a>
     </div>
     <div class="nav-right">
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
         <div class="export-wrapper" id="exportWrapper">
             <button class="export-btn" onclick="document.getElementById('exportWrapper').classList.toggle('open')">
                 <span>Export / Share</span><span class="arrow">&#9660;</span>
@@ -282,6 +313,22 @@ body {
 <div id="app"></div>
 
 <script>
+function toggleTheme() {
+    var html = document.documentElement;
+    var next = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('dbdiagram_theme', next);
+    document.getElementById('themeToggle').textContent = next === 'light' ? '☀️' : '🌙';
+}
+(function() {
+    var theme = localStorage.getItem('dbdiagram_theme') || 'dark';
+    if (theme === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        var btn = document.getElementById('themeToggle');
+        if (btn) btn.textContent = '☀️';
+    }
+})();
+
 function showToast(msg, duration = 3000) {
     const container = document.getElementById('toastContainer');
     const toast = document.createElement('div');
