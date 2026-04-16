@@ -36,6 +36,11 @@ An interactive web-based tool for visualizing and analyzing database schemas. Co
 - **SVG Export** — Visual diagram as SVG with footer bar and embedded schema metadata (re-importable)
 - **Mermaid Export** — Download or copy a Mermaid `erDiagram` block for embedding in GitHub READMEs, Notion, or any Mermaid-compatible tool
 
+### Query Builder
+- **Visual Query Builder** — Dedicated page to visually build SQL queries. Pick tables from a categorized sidebar, auto-JOIN via FK relationship detection (BFS shortest path), select columns with checkboxes, and add WHERE conditions
+- **Live SQL Preview** — Real-time syntax-highlighted SQL output that updates as you build. Dialect-aware quoting for MySQL, PostgreSQL, and SQL Server
+- **Copy & Download** — Copy the generated SQL to clipboard or download as a `.sql` file
+
 ### Schema Comparison
 - **Schema Diff** — Compare two schemas side-by-side from any combination of live connections, SQL files, or the currently loaded schema. Shows added, removed, and modified tables with column-level change details
 - **Diff Export** — Download the comparison as a Markdown report or share via compressed URL
@@ -113,7 +118,8 @@ An interactive web-based tool for visualizing and analyzing database schemas. Co
 │   ├── dynamic-list.html        # Table list view
 │   ├── dynamic-visual.html      # Visual diagram
 │   ├── dynamic-analysis.html    # Schema analysis & tips
-│   └── dynamic-diff.html        # Schema diff / comparison
+│   ├── dynamic-diff.html        # Schema diff / comparison
+│   └── dynamic-query.html       # Interactive SQL query builder
 ├── docs/
 │   └── superpowers/
 │       ├── specs/               # Design specifications
