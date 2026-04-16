@@ -1,0 +1,1610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Database Diagram — Query Builder</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    min-height: 100vh;
+    overflow: hidden;
+}
+
+/* Global nav bar */
+.global-nav { position: sticky; top: 0; z-index: 100; background: #0f172a; border-bottom: 1px solid #1e293b; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 50px; }
+.nav-left { display: flex; align-items: center; gap: 12px; }
+.nav-left .app-name { color: #f8fafc; font-size: 15px; font-weight: 700; text-decoration: none; }
+.nav-left .app-name:hover { color: #818cf8; }
+.db-badge { background: #1e293b; border: 1px solid #334155; border-radius: 20px; padding: 4px 12px; font-size: 12px; color: #94a3b8; white-space: nowrap; }
+.nav-center { display: flex; align-items: center; gap: 4px; }
+.nav-tab { color: #94a3b8; text-decoration: none; font-size: 13px; font-weight: 500; padding: 14px 16px; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; }
+.nav-tab:hover { color: #e2e8f0; }
+.nav-tab.active { color: #e2e8f0; border-bottom-color: #6366f1; }
+.nav-tab.diff-tab { opacity: 0.4; }
+.nav-tab.diff-tab.has-diff { opacity: 1; }
+.nav-tab.query-tab { opacity: 1; }
+.nav-right { display: flex; align-items: center; gap: 10px; }
+.nav-new-btn { border: 1px solid #334155; background: transparent; color: #94a3b8; border-radius: 8px; padding: 6px 14px; font-size: 12px; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.nav-new-btn:hover { border-color: #6366f1; color: #e2e8f0; }
+
+/* Export dropdown */
+.export-wrapper { position: relative; display: inline-block; }
+.export-btn { background: linear-gradient(135deg, #6366f1, #4f46e5); color: #fff; border: none; padding: 8px 18px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.export-btn:hover { background: linear-gradient(135deg, #818cf8, #6366f1); }
+.export-btn .arrow { font-size: 10px; transition: transform 0.2s; }
+.export-wrapper.open .export-btn .arrow { transform: rotate(180deg); }
+.export-menu { display: none; position: absolute; right: 0; top: calc(100% + 6px); background: #1e293b; border: 1px solid #334155; border-radius: 10px; min-width: 220px; box-shadow: 0 8px 30px rgba(0,0,0,0.4); z-index: 1000; overflow: hidden; }
+.export-wrapper.open .export-menu { display: block; }
+.export-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; background: none; border: none; color: #e2e8f0; font-size: 14px; cursor: pointer; text-align: left; }
+.export-menu button:hover { background: #334155; }
+.export-menu button .icon { width: 20px; text-align: center; font-size: 16px; }
+
+/* Toast notifications */
+.toast-container { position: fixed; bottom: 200px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.toast { background: rgba(15, 23, 42, 0.95); color: #e2e8f0; padding: 12px 24px; border-radius: 8px; font-size: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); border: 1px solid rgba(99,102,241,0.3); animation: toastIn 0.3s ease; pointer-events: auto; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+.toast.fade-out { animation: toastOut 0.3s ease forwards; }
+@keyframes toastOut { to { opacity: 0; transform: translateY(12px); } }
+
+/* No data */
+.no-data { text-align: center; padding: 80px 32px; color: #64748b; }
+.no-data h2 { color: #94a3b8; margin-bottom: 8px; }
+.no-data a { color: #38bdf8; text-decoration: none; }
+.no-data a:hover { text-decoration: underline; }
+
+/* Three-zone layout */
+.layout {
+    display: flex;
+    height: calc(100vh - 50px - 180px);
+}
+
+/* Table picker sidebar */
+.picker {
+    width: 260px;
+    min-width: 260px;
+    background: #1e293b;
+    border-right: 1px solid #334155;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.picker-header {
+    padding: 12px;
+    border-bottom: 1px solid #334155;
+}
+.picker-header h3 {
+    font-size: 13px;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+.picker-search {
+    width: 100%;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 7px 10px;
+    color: #e2e8f0;
+    font-size: 13px;
+    outline: none;
+}
+.picker-search:focus { border-color: #6366f1; }
+.picker-search::placeholder { color: #475569; }
+.picker-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+.picker-body::-webkit-scrollbar { width: 6px; }
+.picker-body::-webkit-scrollbar-track { background: transparent; }
+.picker-body::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+
+/* Category groups */
+.cat-group { margin-bottom: 2px; }
+.cat-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 12px;
+    font-weight: 600;
+    color: #94a3b8;
+    transition: background 0.15s;
+}
+.cat-header:hover { background: rgba(255,255,255,0.03); }
+.cat-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.cat-chevron {
+    font-size: 10px;
+    transition: transform 0.2s;
+    margin-left: auto;
+    color: #475569;
+}
+.cat-group.collapsed .cat-chevron { transform: rotate(-90deg); }
+.cat-group.collapsed .cat-tables { display: none; }
+.cat-count {
+    font-size: 10px;
+    color: #475569;
+    margin-left: 4px;
+}
+
+/* Table rows */
+.table-row {
+    display: flex;
+    align-items: center;
+    padding: 5px 12px 5px 28px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #cbd5e1;
+    transition: background 0.1s;
+    gap: 6px;
+}
+.table-row:hover { background: rgba(99,102,241,0.08); }
+.table-row.selected { background: rgba(99,102,241,0.15); color: #e2e8f0; }
+.table-row .check {
+    width: 16px; height: 16px;
+    border: 1px solid #475569;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 11px;
+    color: transparent;
+    transition: all 0.15s;
+}
+.table-row.selected .check {
+    background: #6366f1;
+    border-color: #6366f1;
+    color: #fff;
+}
+.table-row .tname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table-row .col-count {
+    font-size: 10px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 1px 6px;
+    color: #64748b;
+}
+
+/* Query canvas (center) */
+.canvas {
+    flex: 1;
+    overflow: auto;
+    padding: 20px;
+    position: relative;
+}
+.canvas::-webkit-scrollbar { width: 8px; height: 8px; }
+.canvas::-webkit-scrollbar-track { background: transparent; }
+.canvas::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+.canvas-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #475569;
+    text-align: center;
+    gap: 12px;
+}
+.canvas-empty .icon { font-size: 48px; opacity: 0.3; }
+.canvas-empty h3 { color: #64748b; font-weight: 600; font-size: 16px; }
+.canvas-empty p { font-size: 13px; max-width: 300px; line-height: 1.5; }
+
+/* Table cards on canvas */
+.canvas-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-start;
+}
+.table-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    width: 280px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+}
+.table-card:hover { border-color: #475569; }
+.table-card.cross-join { border-color: #f59e0b; border-style: dashed; }
+
+.card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: #0f172a;
+    border-bottom: 1px solid #334155;
+}
+.card-head .card-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #f8fafc;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.card-head .card-alias {
+    font-size: 11px;
+    color: #6366f1;
+    font-weight: 600;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+.join-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.join-badge.from { background: #6366f1; color: #fff; cursor: default; }
+.join-badge.inner { background: #22c55e; color: #fff; }
+.join-badge.inner:hover { background: #16a34a; }
+.join-badge.left { background: #3b82f6; color: #fff; }
+.join-badge.left:hover { background: #2563eb; }
+.join-badge.right { background: #f59e0b; color: #000; }
+.join-badge.right:hover { background: #d97706; }
+.join-badge.cross { background: #ef4444; color: #fff; }
+.join-badge.cross:hover { background: #dc2626; }
+.card-remove {
+    background: none;
+    border: none;
+    color: #475569;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+}
+.card-remove:hover { color: #ef4444; }
+
+.card-body {
+    max-height: 260px;
+    overflow-y: auto;
+}
+.card-body::-webkit-scrollbar { width: 4px; }
+.card-body::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+
+.col-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.col-row:hover { background: rgba(255,255,255,0.03); }
+.col-check {
+    width: 14px; height: 14px;
+    border: 1px solid #475569;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 9px;
+    color: transparent;
+    transition: all 0.15s;
+}
+.col-check.checked {
+    background: #6366f1;
+    border-color: #6366f1;
+    color: #fff;
+}
+.col-name {
+    flex: 1;
+    color: #cbd5e1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+.col-icon {
+    font-size: 10px;
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+}
+.col-icon.pk { color: #f59e0b; }
+.col-icon.fk { color: #6366f1; }
+.col-type {
+    font-size: 10px;
+    color: #64748b;
+    background: #0f172a;
+    padding: 1px 5px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+
+.card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    border-top: 1px solid #334155;
+    background: #0f172a;
+}
+.toggle-all {
+    font-size: 11px;
+    color: #6366f1;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+}
+.toggle-all:hover { color: #818cf8; }
+.col-selected-count {
+    font-size: 10px;
+    color: #64748b;
+}
+
+/* Join indicator between cards */
+.join-indicator {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 11px;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    align-self: center;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    white-space: nowrap;
+}
+.join-indicator .join-arrow { color: #6366f1; }
+
+/* Cross join warning */
+.cross-warn {
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 11px;
+    color: #fbbf24;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: -8px;
+}
+
+/* SQL Preview (bottom panel) */
+.sql-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 180px;
+    background: #1e293b;
+    border-top: 1px solid #334155;
+    display: flex;
+    flex-direction: column;
+    z-index: 50;
+}
+.sql-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    border-bottom: 1px solid #334155;
+    background: #0f172a;
+    flex-shrink: 0;
+}
+.sql-header h4 {
+    font-size: 12px;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.sql-header .spacer { flex: 1; }
+.dialect-select {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 5px;
+    color: #e2e8f0;
+    font-size: 12px;
+    padding: 3px 8px;
+    outline: none;
+    cursor: pointer;
+}
+.dialect-select:focus { border-color: #6366f1; }
+.sql-action-btn {
+    background: none;
+    border: 1px solid #334155;
+    color: #94a3b8;
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.sql-action-btn:hover { border-color: #6366f1; color: #e2e8f0; }
+.sql-body {
+    flex: 1;
+    overflow: auto;
+    padding: 12px 16px;
+}
+.sql-body::-webkit-scrollbar { width: 6px; }
+.sql-body::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+.sql-body pre {
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px;
+    color: #e2e8f0;
+    line-height: 1.6;
+    white-space: pre;
+    margin: 0;
+}
+.sql-body .sql-empty {
+    color: #475569;
+    font-style: italic;
+    font-size: 13px;
+}
+</style>
+</head>
+<body>
+<div class="toast-container" id="toastContainer"></div>
+<nav class="global-nav">
+    <div class="nav-left">
+        <a href="/" class="app-name">DatabaseDiagram</a>
+        <span class="db-badge" id="dbBadge"></span>
+    </div>
+    <div class="nav-center">
+        <a href="/dynamic-list.html" class="nav-tab">Table List</a>
+        <a href="/dynamic-visual.html" class="nav-tab">Visual Diagram</a>
+        <a href="/dynamic-analysis.html" class="nav-tab">Analysis</a>
+        <a href="/dynamic-diff.html" class="nav-tab diff-tab" id="diffTab">Diff</a>
+        <a href="/dynamic-query.html" class="nav-tab query-tab active" id="queryTab">Query</a>
+    </div>
+    <div class="nav-right">
+        <div class="export-wrapper" id="exportWrapper">
+            <button class="export-btn" onclick="document.getElementById('exportWrapper').classList.toggle('open')">
+                <span>Export SQL</span><span class="arrow">&#9660;</span>
+            </button>
+            <div class="export-menu">
+                <button onclick="copySQL()"><span class="icon">&#128203;</span> Copy SQL</button>
+                <button onclick="downloadSQL()"><span class="icon">&#128190;</span> Download SQL</button>
+            </div>
+        </div>
+        <a href="/" class="nav-new-btn">&#8592; New Connection</a>
+    </div>
+</nav>
+<div id="app"></div>
+
+<script>
+// --- Toast ---
+function showToast(msg, duration) {
+    if (duration === undefined) duration = 3000;
+    var container = document.getElementById('toastContainer');
+    var toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = msg;
+    container.appendChild(toast);
+    setTimeout(function() {
+        toast.classList.add('fade-out');
+        toast.addEventListener('animationend', function() { toast.remove(); });
+    }, duration);
+}
+
+// --- DB badge IIFE ---
+(function() {
+    var raw = sessionStorage.getItem('dbdiagram_data');
+    if (raw) {
+        try {
+            var data = JSON.parse(raw);
+            var badge = document.getElementById('dbBadge');
+            if (badge && data.database) {
+                badge.textContent = data.database + (data.version ? ' \u00b7 ' + data.version : '');
+            }
+        } catch(e) {}
+    }
+})();
+
+// --- Diff tab visibility IIFE ---
+(function() {
+    var diffTab = document.getElementById('diffTab');
+    if (diffTab && sessionStorage.getItem('dbdiagram_diff_a')) {
+        diffTab.classList.add('has-diff');
+    }
+})();
+
+// --- Close export dropdown on outside click ---
+document.addEventListener('click', function(e) {
+    var wrapper = document.getElementById('exportWrapper');
+    if (wrapper && !wrapper.contains(e.target)) {
+        wrapper.classList.remove('open');
+    }
+});
+
+// --- Escape HTML ---
+function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// --- Auto-categorization engine (copied from dynamic-list.html) ---
+function autoCategorize(schema) {
+    var tableNames = Object.keys(schema);
+
+    // Phase 1: Known pattern rules (highest priority)
+    var rules = [
+        { name: 'Identity & Auth', patterns: [/^aspnet/i, /^role/i, /^user(claim|login|role|token)/i, /identity/i, /auth/i, /permission/i, /claim/i] },
+        { name: 'Hangfire (Job Queue)', patterns: [/^hangfire/i] },
+        { name: 'Legacy Job Queue', patterns: [/^(job|jobparameter|jobqueue|jobstate|state|counter|aggregatedcounter|distributedlock|hash|list|server|set)$/i] },
+        { name: 'System', patterns: [/^__ef/i, /^migration/i, /^schema_version/i, /^sysdiagram/i] },
+        { name: 'Audit & Logs', patterns: [/audit/i, /^log/i, /log$/i, /history$/i, /changelog/i, /tracking/i] },
+    ];
+
+    var assigned = {};
+    var unassigned = [];
+
+    for (var ti = 0; ti < tableNames.length; ti++) {
+        var t = tableNames[ti];
+        var found = false;
+        for (var ri = 0; ri < rules.length; ri++) {
+            if (rules[ri].patterns.some(function(p) { return p.test(t); })) {
+                assigned[t] = rules[ri].name;
+                found = true;
+                break;
+            }
+        }
+        if (!found) unassigned.push(t);
+    }
+
+    // Phase 2: Extract meaningful words from table names
+    var genericPrefixes = {};
+    ['tbl','vw','sp','fn','usp','udf','dim','fact','tmp','temp','stg','raw','lu','lkp','ref','t','v','p','dbo'].forEach(function(p) { genericPrefixes[p] = true; });
+
+    function tokenize(name) {
+        var parts = name.split('_').filter(Boolean);
+        var i = 0;
+        while (i < parts.length - 1 && genericPrefixes[parts[i].toLowerCase()]) i++;
+        parts = parts.slice(i);
+        var tokens = [];
+        for (var pi = 0; pi < parts.length; pi++) {
+            var sub = parts[pi].replace(/([a-z])([A-Z])/g, '$1_$2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2').split('_');
+            tokens.push.apply(tokens, sub);
+        }
+        return tokens.map(function(p) { return p.toLowerCase(); });
+    }
+
+    function sharedPrefixLen(a, b) {
+        var n = 0;
+        for (var i = 0; i < Math.min(a.length, b.length); i++) {
+            if (a[i] === b[i]) n++;
+            else break;
+        }
+        return n;
+    }
+
+    var tableTokens = {};
+    for (var ui = 0; ui < unassigned.length; ui++) {
+        tableTokens[unassigned[ui]] = tokenize(unassigned[ui]);
+    }
+
+    // Phase 3: Multi-word prefix grouping with union-find
+    var parent = {};
+    function find(x) {
+        if (parent[x] !== x) parent[x] = find(parent[x]);
+        return parent[x];
+    }
+    function union(a, b) {
+        var ra = find(a), rb = find(b);
+        if (ra !== rb) parent[ra] = rb;
+    }
+
+    for (var ui2 = 0; ui2 < unassigned.length; ui2++) parent[unassigned[ui2]] = unassigned[ui2];
+
+    for (var i = 0; i < unassigned.length; i++) {
+        for (var j = i + 1; j < unassigned.length; j++) {
+            var shared = sharedPrefixLen(tableTokens[unassigned[i]], tableTokens[unassigned[j]]);
+            if (shared >= 1) union(unassigned[i], unassigned[j]);
+        }
+    }
+
+    var prefixGroupsMap = {};
+    for (var ui3 = 0; ui3 < unassigned.length; ui3++) {
+        var root = find(unassigned[ui3]);
+        if (!prefixGroupsMap[root]) prefixGroupsMap[root] = [];
+        prefixGroupsMap[root].push(unassigned[ui3]);
+    }
+
+    function groupCommonPrefix(tables) {
+        if (tables.length === 0) return [];
+        var common = tableTokens[tables[0]].slice();
+        for (var i = 1; i < tables.length; i++) {
+            var tok = tableTokens[tables[i]];
+            var n = 0;
+            for (var j = 0; j < Math.min(common.length, tok.length); j++) {
+                if (common[j] === tok[j]) n++;
+                else break;
+            }
+            common = common.slice(0, n);
+            if (common.length === 0) break;
+        }
+        return common;
+    }
+
+    var prefixCategories = {};
+    var tableToCat = {};
+
+    var groupKeys = Object.keys(prefixGroupsMap);
+    for (var gi = 0; gi < groupKeys.length; gi++) {
+        var tables = prefixGroupsMap[groupKeys[gi]];
+        if (tables.length < 2) continue;
+        var common = groupCommonPrefix(tables);
+        var catName = common.length > 0
+            ? common.map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ')
+            : null;
+        if (catName) {
+            if (!prefixCategories[catName]) prefixCategories[catName] = [];
+            prefixCategories[catName].push.apply(prefixCategories[catName], tables);
+            for (var ti2 = 0; ti2 < tables.length; ti2++) tableToCat[tables[ti2]] = catName;
+        }
+    }
+
+    // Phase 4: FK relationship refinement
+    var fkNeighbors = {};
+    for (var ti3 = 0; ti3 < tableNames.length; ti3++) {
+        var tn = tableNames[ti3];
+        if (!fkNeighbors[tn]) fkNeighbors[tn] = {};
+        var def = schema[tn];
+        for (var fi = 0; fi < def.foreign_keys.length; fi++) {
+            var refT = def.foreign_keys[fi].ref_table;
+            if (!fkNeighbors[refT]) fkNeighbors[refT] = {};
+            fkNeighbors[tn][refT] = true;
+            fkNeighbors[refT][tn] = true;
+        }
+    }
+
+    // 4a: Merge small prefix groups FK-connected to larger groups
+    var catSizes = {};
+    var pcKeys = Object.keys(prefixCategories);
+    for (var ci = 0; ci < pcKeys.length; ci++) catSizes[pcKeys[ci]] = prefixCategories[pcKeys[ci]].length;
+
+    for (var ci2 = 0; ci2 < pcKeys.length; ci2++) {
+        var cat = pcKeys[ci2];
+        var catTables = prefixCategories[cat];
+        if (!catTables || catTables.length >= 3) continue;
+        var connectionCount = {};
+        for (var cti = 0; cti < catTables.length; cti++) {
+            var neighbors = fkNeighbors[catTables[cti]] || {};
+            var nKeys = Object.keys(neighbors);
+            for (var ni = 0; ni < nKeys.length; ni++) {
+                var neighborCat = tableToCat[nKeys[ni]] || assigned[nKeys[ni]];
+                if (neighborCat && neighborCat !== cat) {
+                    connectionCount[neighborCat] = (connectionCount[neighborCat] || 0) + 1;
+                }
+            }
+        }
+        var bestCat = null, bestCount = 0;
+        var ccKeys = Object.keys(connectionCount);
+        for (var cci = 0; cci < ccKeys.length; cci++) {
+            if (connectionCount[ccKeys[cci]] > bestCount && (catSizes[ccKeys[cci]] || 0) >= 3) {
+                bestCat = ccKeys[cci];
+                bestCount = connectionCount[ccKeys[cci]];
+            }
+        }
+        if (bestCat && bestCount >= catTables.length) {
+            prefixCategories[bestCat].push.apply(prefixCategories[bestCat], catTables);
+            for (var mti = 0; mti < catTables.length; mti++) tableToCat[catTables[mti]] = bestCat;
+            delete prefixCategories[cat];
+        }
+    }
+
+    // 4b: Place solo unassigned tables via FK connections
+    var soloTables = unassigned.filter(function(t) { return !tableToCat[t]; });
+    var remainingSolo = [];
+
+    for (var si = 0; si < soloTables.length; si++) {
+        var st = soloTables[si];
+        var catVotes = {};
+        var sn = Object.keys(fkNeighbors[st] || {});
+        for (var sni = 0; sni < sn.length; sni++) {
+            var nc = tableToCat[sn[sni]] || assigned[sn[sni]];
+            if (nc) catVotes[nc] = (catVotes[nc] || 0) + 1;
+        }
+        var bestC = null, bestV = 0;
+        var cvKeys = Object.keys(catVotes);
+        for (var cvi = 0; cvi < cvKeys.length; cvi++) {
+            if (catVotes[cvKeys[cvi]] > bestV) { bestC = cvKeys[cvi]; bestV = catVotes[cvKeys[cvi]]; }
+        }
+        if (bestC) {
+            tableToCat[st] = bestC;
+            if (prefixCategories[bestC]) prefixCategories[bestC].push(st);
+        } else {
+            remainingSolo.push(st);
+        }
+    }
+
+    // 4c: FK-connected clusters among remaining solos
+    var soloVisited = {};
+    for (var rsi = 0; rsi < remainingSolo.length; rsi++) {
+        var rs = remainingSolo[rsi];
+        if (soloVisited[rs]) continue;
+        var cluster = [];
+        var queue = [rs];
+        soloVisited[rs] = true;
+        while (queue.length > 0) {
+            var curr = queue.shift();
+            cluster.push(curr);
+            var cn = Object.keys(fkNeighbors[curr] || {});
+            for (var cni = 0; cni < cn.length; cni++) {
+                if (!soloVisited[cn[cni]] && remainingSolo.indexOf(cn[cni]) >= 0) {
+                    soloVisited[cn[cni]] = true;
+                    queue.push(cn[cni]);
+                }
+            }
+        }
+        if (cluster.length >= 2) {
+            var hub = cluster.reduce(function(best, c) {
+                var conns = Object.keys(fkNeighbors[c] || {}).length;
+                return conns > Object.keys(fkNeighbors[best] || {}).length ? c : best;
+            });
+            var hubTokens = tableTokens[hub] || tokenize(hub);
+            var clusterName = hubTokens.map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
+            var finalName = prefixCategories[clusterName] ? clusterName + ' (Related)' : clusterName;
+            prefixCategories[finalName] = cluster;
+            for (var cli = 0; cli < cluster.length; cli++) tableToCat[cluster[cli]] = finalName;
+        }
+    }
+
+    // Phase 5: Build final categories with colors
+    var palette = [
+        { bg: '#dbeafe', border: '#3b82f6', header: '#2563eb', headerText: '#fff' },
+        { bg: '#dcfce7', border: '#22c55e', header: '#16a34a', headerText: '#fff' },
+        { bg: '#fef3c7', border: '#f59e0b', header: '#d97706', headerText: '#fff' },
+        { bg: '#fee2e2', border: '#ef4444', header: '#dc2626', headerText: '#fff' },
+        { bg: '#e0e7ff', border: '#6366f1', header: '#4f46e5', headerText: '#fff' },
+        { bg: '#fce7f3', border: '#ec4899', header: '#db2777', headerText: '#fff' },
+        { bg: '#ccfbf1', border: '#14b8a6', header: '#0d9488', headerText: '#fff' },
+        { bg: '#f3e8ff', border: '#a855f7', header: '#9333ea', headerText: '#fff' },
+        { bg: '#fff7ed', border: '#f97316', header: '#ea580c', headerText: '#fff' },
+        { bg: '#f1f5f9', border: '#94a3b8', header: '#64748b', headerText: '#fff' },
+        { bg: '#ecfdf5', border: '#10b981', header: '#059669', headerText: '#fff' },
+        { bg: '#fef2f2', border: '#f87171', header: '#ef4444', headerText: '#fff' },
+        { bg: '#eff6ff', border: '#60a5fa', header: '#3b82f6', headerText: '#fff' },
+        { bg: '#fdf4ff', border: '#c084fc', header: '#a855f7', headerText: '#fff' },
+        { bg: '#f0fdfa', border: '#2dd4bf', header: '#14b8a6', headerText: '#fff' },
+    ];
+
+    var fixedColors = {
+        'Identity & Auth': { bg: '#fce7f3', border: '#ec4899', header: '#db2777', headerText: '#fff' },
+        'Hangfire (Job Queue)': { bg: '#fff7ed', border: '#f97316', header: '#ea580c', headerText: '#fff' },
+        'Legacy Job Queue': { bg: '#f1f5f9', border: '#94a3b8', header: '#64748b', headerText: '#fff' },
+        'System': { bg: '#f5f5f5', border: '#a3a3a3', header: '#737373', headerText: '#fff' },
+        'Audit & Logs': { bg: '#f3e8ff', border: '#a855f7', header: '#9333ea', headerText: '#fff' },
+    };
+
+    var categories = {};
+    var categoryColors = {};
+
+    for (var rli = 0; rli < rules.length; rli++) {
+        var ruleName = rules[rli].name;
+        var ruleTables = tableNames.filter(function(t) { return assigned[t] === ruleName; });
+        var fkPlaced = unassigned.filter(function(t) { return tableToCat[t] === ruleName; });
+        var all = [];
+        var seen = {};
+        ruleTables.concat(fkPlaced).forEach(function(t) { if (!seen[t]) { seen[t] = true; all.push(t); } });
+        if (all.length > 0) {
+            categories[ruleName] = all;
+            categoryColors[ruleName] = fixedColors[ruleName] || palette[Object.keys(categories).length % palette.length];
+        }
+    }
+
+    var sortedCats = Object.entries(prefixCategories).sort(function(a, b) { return b[1].length - a[1].length; });
+    for (var sci = 0; sci < sortedCats.length; sci++) {
+        var scName = sortedCats[sci][0];
+        var scTables = sortedCats[sci][1];
+        var unique = [];
+        var useen = {};
+        scTables.forEach(function(t) { if (!useen[t]) { useen[t] = true; unique.push(t); } });
+        if (unique.length > 0) {
+            categories[scName] = unique;
+            categoryColors[scName] = palette[Object.keys(categories).length % palette.length];
+        }
+    }
+
+    var finalSolo2 = tableNames.filter(function(t) { return !assigned[t] && !tableToCat[t]; });
+    if (finalSolo2.length > 0) {
+        categories['Other'] = finalSolo2;
+        categoryColors['Other'] = { bg: '#f5f5f5', border: '#a3a3a3', header: '#737373', headerText: '#fff' };
+    }
+
+    var tableCategory = {};
+    var catKeys = Object.keys(categories);
+    for (var tci = 0; tci < catKeys.length; tci++) {
+        var tcTables = categories[catKeys[tci]];
+        for (var tci2 = 0; tci2 < tcTables.length; tci2++) tableCategory[tcTables[tci2]] = catKeys[tci];
+    }
+    for (var tni = 0; tni < tableNames.length; tni++) {
+        if (!tableCategory[tableNames[tni]]) {
+            tableCategory[tableNames[tni]] = 'Other';
+            if (!categories['Other']) { categories['Other'] = []; categoryColors['Other'] = { bg: '#f5f5f5', border: '#a3a3a3', header: '#737373', headerText: '#fff' }; }
+            categories['Other'].push(tableNames[tni]);
+        }
+    }
+
+    return { categories: categories, categoryColors: categoryColors, tableCategory: tableCategory };
+}
+
+// =============================================================================
+// State variables
+// =============================================================================
+var schema = null;
+var schemaData = null;
+var selectedTables = [];         // [{ name, alias, joinType, joinFrom, joinFromCol, joinToCol }]
+var columnSelections = {};       // { tableName: { colName: true/false } }
+var tableAliases = {};           // { tableName: alias }
+var fkGraph = {};                // bidirectional FK graph: { table: [{ to, fromCol, toCol }] }
+var dialect = 'mysql';           // 'mysql', 'postgres', 'mssql'
+var whereConditions = [];        // reserved for Task 4
+var categoryData = null;         // result of autoCategorize()
+
+// =============================================================================
+// Init
+// =============================================================================
+function init() {
+    var raw = sessionStorage.getItem('dbdiagram_data');
+    if (!raw) {
+        document.getElementById('app').innerHTML =
+            '<div class="no-data">' +
+            '<h2>No schema data found</h2>' +
+            '<p>Please <a href="/">connect to a database</a> or upload a SQL dump first.</p>' +
+            '</div>';
+        return;
+    }
+
+    schemaData = JSON.parse(raw);
+    schema = schemaData.schema;
+    detectDialect();
+    buildFKGraph();
+    categoryData = autoCategorize(schema);
+
+    // Build layout
+    document.getElementById('app').innerHTML =
+        '<div class="layout">' +
+            '<div class="picker" id="picker"></div>' +
+            '<div class="canvas" id="canvas"></div>' +
+        '</div>' +
+        '<div class="sql-panel" id="sqlPanel">' +
+            '<div class="sql-header">' +
+                '<h4>SQL Preview</h4>' +
+                '<div class="spacer"></div>' +
+                '<select class="dialect-select" id="dialectSelect" onchange="changeDialect(this.value)">' +
+                    '<option value="mysql">MySQL</option>' +
+                    '<option value="postgres">PostgreSQL</option>' +
+                    '<option value="mssql">SQL Server</option>' +
+                '</select>' +
+                '<button class="sql-action-btn" onclick="copySQL()">Copy</button>' +
+                '<button class="sql-action-btn" onclick="downloadSQL()">Download</button>' +
+            '</div>' +
+            '<div class="sql-body" id="sqlBody"></div>' +
+        '</div>';
+
+    document.getElementById('dialectSelect').value = dialect;
+
+    loadState();
+    renderPicker();
+    renderAll();
+}
+
+// =============================================================================
+// Dialect detection
+// =============================================================================
+function detectDialect() {
+    if (!schemaData || !schemaData.version) return;
+    var v = schemaData.version.toLowerCase();
+    if (v.indexOf('postgres') >= 0 || v.indexOf('psql') >= 0) dialect = 'postgres';
+    else if (v.indexOf('microsoft') >= 0 || v.indexOf('sql server') >= 0 || v.indexOf('mssql') >= 0) dialect = 'mssql';
+    else dialect = 'mysql';
+}
+
+// =============================================================================
+// Build bidirectional FK graph
+// =============================================================================
+function buildFKGraph() {
+    fkGraph = {};
+    var tableNames = Object.keys(schema);
+    for (var i = 0; i < tableNames.length; i++) {
+        var t = tableNames[i];
+        if (!fkGraph[t]) fkGraph[t] = [];
+        var fks = schema[t].foreign_keys;
+        for (var fi = 0; fi < fks.length; fi++) {
+            var fk = fks[fi];
+            var ref = fk.ref_table;
+            if (!fkGraph[ref]) fkGraph[ref] = [];
+            // Forward: t -> ref (t.column references ref.ref_column)
+            fkGraph[t].push({ to: ref, fromCol: fk.column, toCol: fk.ref_column });
+            // Backward: ref -> t
+            fkGraph[ref].push({ to: t, fromCol: fk.ref_column, toCol: fk.column });
+        }
+    }
+}
+
+// =============================================================================
+// Alias generation
+// =============================================================================
+function generateAlias(tableName) {
+    var parts = tableName.split('_').filter(Boolean);
+    var base;
+    if (parts.length === 1) {
+        base = parts[0].charAt(0).toLowerCase();
+    } else {
+        base = parts.map(function(p) { return p.charAt(0).toLowerCase(); }).join('');
+    }
+
+    // Check for conflicts
+    var usedAliases = {};
+    for (var k in tableAliases) {
+        if (tableAliases.hasOwnProperty(k)) {
+            usedAliases[tableAliases[k]] = true;
+        }
+    }
+
+    if (!usedAliases[base]) return base;
+
+    var n = 2;
+    while (usedAliases[base + n]) n++;
+    return base + n;
+}
+
+// =============================================================================
+// Find join path via BFS
+// =============================================================================
+function findJoinPath(newTable) {
+    // Find shortest FK path from newTable to any table already on canvas
+    var canvasTables = {};
+    for (var i = 0; i < selectedTables.length; i++) {
+        canvasTables[selectedTables[i].name] = true;
+    }
+
+    // BFS from newTable
+    var visited = {};
+    visited[newTable] = true;
+    var queue = [{ table: newTable, path: [] }];
+
+    while (queue.length > 0) {
+        var current = queue.shift();
+        var edges = fkGraph[current.table] || [];
+
+        for (var ei = 0; ei < edges.length; ei++) {
+            var edge = edges[ei];
+            if (visited[edge.to]) continue;
+            visited[edge.to] = true;
+
+            var newPath = current.path.concat([{
+                from: current.table,
+                to: edge.to,
+                fromCol: edge.fromCol,
+                toCol: edge.toCol
+            }]);
+
+            if (canvasTables[edge.to]) {
+                // Found a path to an existing canvas table
+                return newPath;
+            }
+
+            queue.push({ table: edge.to, path: newPath });
+        }
+    }
+
+    return null; // No path found
+}
+
+// =============================================================================
+// Add table to canvas
+// =============================================================================
+function addTable(tableName) {
+    // Already selected?
+    for (var i = 0; i < selectedTables.length; i++) {
+        if (selectedTables[i].name === tableName) return;
+    }
+
+    if (selectedTables.length === 0) {
+        // First table: FROM
+        var alias = generateAlias(tableName);
+        tableAliases[tableName] = alias;
+        selectedTables.push({
+            name: tableName,
+            alias: alias,
+            joinType: 'FROM',
+            joinFrom: null,
+            joinFromCol: null,
+            joinToCol: null
+        });
+    } else {
+        // Find join path
+        var path = findJoinPath(tableName);
+        if (path) {
+            // Add intermediate tables on the path (skip the last step which connects to existing)
+            for (var pi = 0; pi < path.length; pi++) {
+                var step = path[pi];
+                var stepTable = step.from;
+
+                // Skip if already on canvas
+                var alreadyExists = false;
+                for (var si = 0; si < selectedTables.length; si++) {
+                    if (selectedTables[si].name === stepTable) { alreadyExists = true; break; }
+                }
+                if (alreadyExists) continue;
+
+                var stepAlias = generateAlias(stepTable);
+                tableAliases[stepTable] = stepAlias;
+
+                // Initialize column selections
+                initColumnSelections(stepTable);
+
+                selectedTables.push({
+                    name: stepTable,
+                    alias: stepAlias,
+                    joinType: 'INNER',
+                    joinFrom: step.to,
+                    joinFromCol: step.toCol,
+                    joinToCol: step.fromCol
+                });
+            }
+
+            // Now add the target table if not already present
+            var targetExists = false;
+            for (var ti = 0; ti < selectedTables.length; ti++) {
+                if (selectedTables[ti].name === tableName) { targetExists = true; break; }
+            }
+            if (!targetExists) {
+                // Find the edge connecting this table to the path
+                var lastStep = path[path.length - 1];
+                var joinFrom, joinFromCol, joinToCol;
+
+                if (lastStep.from === tableName) {
+                    joinFrom = lastStep.to;
+                    joinFromCol = lastStep.toCol;
+                    joinToCol = lastStep.fromCol;
+                } else {
+                    joinFrom = lastStep.from;
+                    joinFromCol = lastStep.fromCol;
+                    joinToCol = lastStep.toCol;
+                }
+
+                var tAlias = generateAlias(tableName);
+                tableAliases[tableName] = tAlias;
+
+                selectedTables.push({
+                    name: tableName,
+                    alias: tAlias,
+                    joinType: 'INNER',
+                    joinFrom: joinFrom,
+                    joinFromCol: joinFromCol,
+                    joinToCol: joinToCol
+                });
+            }
+        } else {
+            // No FK path: CROSS JOIN
+            var cAlias = generateAlias(tableName);
+            tableAliases[tableName] = cAlias;
+            selectedTables.push({
+                name: tableName,
+                alias: cAlias,
+                joinType: 'CROSS',
+                joinFrom: null,
+                joinFromCol: null,
+                joinToCol: null
+            });
+        }
+    }
+
+    initColumnSelections(tableName);
+    saveState();
+    renderAll();
+}
+
+// =============================================================================
+// Remove table from canvas
+// =============================================================================
+function removeTable(tableName) {
+    // Find tables that depend on this table for their join
+    var dependents = [];
+    for (var i = 0; i < selectedTables.length; i++) {
+        if (selectedTables[i].joinFrom === tableName) {
+            dependents.push(selectedTables[i].name);
+        }
+    }
+
+    // Remove dependents recursively
+    for (var di = 0; di < dependents.length; di++) {
+        removeTable(dependents[di]);
+    }
+
+    // Remove the table itself
+    selectedTables = selectedTables.filter(function(st) { return st.name !== tableName; });
+    delete tableAliases[tableName];
+    delete columnSelections[tableName];
+
+    // If we removed the FROM table and there are still tables, promote the first
+    if (selectedTables.length > 0 && selectedTables[0].joinType !== 'FROM') {
+        selectedTables[0].joinType = 'FROM';
+        selectedTables[0].joinFrom = null;
+        selectedTables[0].joinFromCol = null;
+        selectedTables[0].joinToCol = null;
+    }
+
+    saveState();
+    renderAll();
+}
+
+// =============================================================================
+// Toggle table (add/remove)
+// =============================================================================
+function toggleTable(tableName) {
+    var exists = false;
+    for (var i = 0; i < selectedTables.length; i++) {
+        if (selectedTables[i].name === tableName) { exists = true; break; }
+    }
+    if (exists) removeTable(tableName);
+    else addTable(tableName);
+}
+
+// =============================================================================
+// Initialize column selections for a table
+// =============================================================================
+function initColumnSelections(tableName) {
+    if (columnSelections[tableName]) return;
+    columnSelections[tableName] = {};
+    var cols = schema[tableName].columns;
+    for (var i = 0; i < cols.length; i++) {
+        columnSelections[tableName][cols[i].name] = true;
+    }
+}
+
+// =============================================================================
+// Cycle join type
+// =============================================================================
+function cycleJoinType(tableName) {
+    for (var i = 0; i < selectedTables.length; i++) {
+        if (selectedTables[i].name === tableName) {
+            var types = ['INNER', 'LEFT', 'RIGHT'];
+            if (selectedTables[i].joinType === 'FROM') return;
+            if (selectedTables[i].joinType === 'CROSS') return;
+            var idx = types.indexOf(selectedTables[i].joinType);
+            selectedTables[i].joinType = types[(idx + 1) % types.length];
+            saveState();
+            renderAll();
+            return;
+        }
+    }
+}
+
+// =============================================================================
+// Toggle column
+// =============================================================================
+function toggleColumn(tableName, colName) {
+    if (!columnSelections[tableName]) return;
+    columnSelections[tableName][colName] = !columnSelections[tableName][colName];
+    saveState();
+    renderAll();
+}
+
+// =============================================================================
+// Toggle all columns for a table
+// =============================================================================
+function toggleAllColumns(tableName) {
+    if (!columnSelections[tableName]) return;
+    var cols = Object.keys(columnSelections[tableName]);
+    var allChecked = cols.every(function(c) { return columnSelections[tableName][c]; });
+    for (var i = 0; i < cols.length; i++) {
+        columnSelections[tableName][cols[i]] = !allChecked;
+    }
+    saveState();
+    renderAll();
+}
+
+// =============================================================================
+// Quote identifier (dialect-aware)
+// =============================================================================
+function quoteId(name) {
+    if (dialect === 'mysql') return '`' + name + '`';
+    if (dialect === 'postgres') return '"' + name + '"';
+    if (dialect === 'mssql') return '[' + name + ']';
+    return name;
+}
+
+// =============================================================================
+// Change dialect
+// =============================================================================
+function changeDialect(d) {
+    dialect = d;
+    saveState();
+    renderAll();
+}
+
+// =============================================================================
+// Generate SQL
+// =============================================================================
+function generateSQL() {
+    if (selectedTables.length === 0) return '';
+
+    var lines = [];
+
+    // SELECT columns
+    var selectCols = [];
+    for (var i = 0; i < selectedTables.length; i++) {
+        var st = selectedTables[i];
+        var cols = schema[st.name].columns;
+        for (var ci = 0; ci < cols.length; ci++) {
+            if (columnSelections[st.name] && columnSelections[st.name][cols[ci].name]) {
+                selectCols.push(st.alias + '.' + quoteId(cols[ci].name));
+            }
+        }
+    }
+
+    if (selectCols.length === 0) {
+        lines.push('SELECT *');
+    } else {
+        lines.push('SELECT');
+        for (var si = 0; si < selectCols.length; si++) {
+            var comma = si < selectCols.length - 1 ? ',' : '';
+            lines.push('    ' + selectCols[si] + comma);
+        }
+    }
+
+    // FROM + JOINs
+    for (var ti = 0; ti < selectedTables.length; ti++) {
+        var tbl = selectedTables[ti];
+        var quotedTable = quoteId(tbl.name);
+        var aliasStr = tbl.alias;
+
+        if (tbl.joinType === 'FROM') {
+            lines.push('FROM ' + quotedTable + ' ' + aliasStr);
+        } else if (tbl.joinType === 'CROSS') {
+            lines.push('CROSS JOIN ' + quotedTable + ' ' + aliasStr);
+        } else {
+            var joinFromAlias = '';
+            for (var ji = 0; ji < selectedTables.length; ji++) {
+                if (selectedTables[ji].name === tbl.joinFrom) {
+                    joinFromAlias = selectedTables[ji].alias;
+                    break;
+                }
+            }
+            var onClause = aliasStr + '.' + quoteId(tbl.joinToCol) +
+                ' = ' + joinFromAlias + '.' + quoteId(tbl.joinFromCol);
+            lines.push(tbl.joinType + ' JOIN ' + quotedTable + ' ' + aliasStr + ' ON ' + onClause);
+        }
+    }
+
+    return lines.join('\n');
+}
+
+// =============================================================================
+// Copy SQL
+// =============================================================================
+function copySQL() {
+    var sql = generateSQL();
+    if (!sql) {
+        showToast('No SQL to copy');
+        return;
+    }
+    navigator.clipboard.writeText(sql).then(function() {
+        showToast('SQL copied to clipboard');
+    }).catch(function() {
+        showToast('Failed to copy SQL');
+    });
+    var wrapper = document.getElementById('exportWrapper');
+    if (wrapper) wrapper.classList.remove('open');
+}
+
+// =============================================================================
+// Download SQL
+// =============================================================================
+function downloadSQL() {
+    var sql = generateSQL();
+    if (!sql) {
+        showToast('No SQL to download');
+        return;
+    }
+    var blob = new Blob([sql], { type: 'text/sql' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'query.sql';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('SQL file downloaded');
+    var wrapper = document.getElementById('exportWrapper');
+    if (wrapper) wrapper.classList.remove('open');
+}
+
+// =============================================================================
+// Save / Load state
+// =============================================================================
+function saveState() {
+    try {
+        var state = {
+            selectedTables: selectedTables,
+            columnSelections: columnSelections,
+            tableAliases: tableAliases,
+            dialect: dialect
+        };
+        sessionStorage.setItem('dbdiagram_query_state', JSON.stringify(state));
+    } catch(e) {}
+}
+
+function loadState() {
+    try {
+        var raw = sessionStorage.getItem('dbdiagram_query_state');
+        if (!raw) return;
+        var state = JSON.parse(raw);
+        if (state.selectedTables) selectedTables = state.selectedTables;
+        if (state.columnSelections) columnSelections = state.columnSelections;
+        if (state.tableAliases) tableAliases = state.tableAliases;
+        if (state.dialect) {
+            dialect = state.dialect;
+            var sel = document.getElementById('dialectSelect');
+            if (sel) sel.value = dialect;
+        }
+    } catch(e) {}
+}
+
+// =============================================================================
+// Render: Table Picker (left sidebar)
+// =============================================================================
+function renderPicker() {
+    var picker = document.getElementById('picker');
+    if (!picker) return;
+
+    var cats = categoryData.categories;
+    var colors = categoryData.categoryColors;
+    var catNames = Object.keys(cats);
+
+    var html = '<div class="picker-header">' +
+        '<h3>Tables</h3>' +
+        '<input type="text" class="picker-search" id="pickerSearch" placeholder="Filter tables..." oninput="filterPicker()" />' +
+        '</div>' +
+        '<div class="picker-body" id="pickerBody">';
+
+    for (var ci = 0; ci < catNames.length; ci++) {
+        var catName = catNames[ci];
+        var color = colors[catName] || { header: '#64748b' };
+        var tables = cats[catName].slice().sort();
+        html += '<div class="cat-group" data-cat="' + esc(catName) + '">' +
+            '<div class="cat-header" onclick="toggleCatGroup(this)">' +
+            '<span class="cat-dot" style="background:' + color.header + '"></span>' +
+            '<span>' + esc(catName) + '</span>' +
+            '<span class="cat-count">(' + tables.length + ')</span>' +
+            '<span class="cat-chevron">&#9660;</span>' +
+            '</div>' +
+            '<div class="cat-tables">';
+
+        for (var ti = 0; ti < tables.length; ti++) {
+            var tName = tables[ti];
+            var colCount = schema[tName] ? schema[tName].columns.length : 0;
+            var isSelected = isTableSelected(tName);
+            html += '<div class="table-row' + (isSelected ? ' selected' : '') + '" onclick="toggleTable(\'' + esc(tName.replace(/'/g, "\\'")) + '\')" data-table="' + esc(tName) + '">' +
+                '<span class="check">' + (isSelected ? '&#10003;' : '') + '</span>' +
+                '<span class="tname">' + esc(tName) + '</span>' +
+                '<span class="col-count">' + colCount + '</span>' +
+                '</div>';
+        }
+
+        html += '</div></div>';
+    }
+
+    html += '</div>';
+    picker.innerHTML = html;
+}
+
+function isTableSelected(tableName) {
+    for (var i = 0; i < selectedTables.length; i++) {
+        if (selectedTables[i].name === tableName) return true;
+    }
+    return false;
+}
+
+function toggleCatGroup(el) {
+    var group = el.parentElement;
+    group.classList.toggle('collapsed');
+}
+
+function filterPicker() {
+    var term = document.getElementById('pickerSearch').value.toLowerCase();
+    var body = document.getElementById('pickerBody');
+    if (!body) return;
+
+    var groups = body.querySelectorAll('.cat-group');
+    for (var gi = 0; gi < groups.length; gi++) {
+        var rows = groups[gi].querySelectorAll('.table-row');
+        var anyVisible = false;
+        for (var ri = 0; ri < rows.length; ri++) {
+            var tName = rows[ri].getAttribute('data-table').toLowerCase();
+            var show = !term || tName.indexOf(term) >= 0;
+            rows[ri].style.display = show ? '' : 'none';
+            if (show) anyVisible = true;
+        }
+        groups[gi].style.display = anyVisible ? '' : 'none';
+        if (anyVisible && term) {
+            groups[gi].classList.remove('collapsed');
+        }
+    }
+}
+
+// =============================================================================
+// Render: Everything
+// =============================================================================
+function renderAll() {
+    renderPickerSelections();
+    renderCanvas();
+    renderSQL();
+}
+
+// Update just the selection states in the picker (no full rebuild)
+function renderPickerSelections() {
+    var body = document.getElementById('pickerBody');
+    if (!body) return;
+    var rows = body.querySelectorAll('.table-row');
+    for (var i = 0; i < rows.length; i++) {
+        var tName = rows[i].getAttribute('data-table');
+        var sel = isTableSelected(tName);
+        if (sel) {
+            rows[i].classList.add('selected');
+            rows[i].querySelector('.check').innerHTML = '&#10003;';
+        } else {
+            rows[i].classList.remove('selected');
+            rows[i].querySelector('.check').innerHTML = '';
+        }
+    }
+}
+
+// =============================================================================
+// Render: Canvas
+// =============================================================================
+function renderCanvas() {
+    var canvas = document.getElementById('canvas');
+    if (!canvas) return;
+
+    if (selectedTables.length === 0) {
+        canvas.innerHTML = '<div class="canvas-empty">' +
+            '<div class="icon">&#128269;</div>' +
+            '<h3>Select a table from the left panel to start building your query</h3>' +
+            '<p>Click on a table name in the sidebar to add it to your query. Tables will be automatically joined based on foreign key relationships.</p>' +
+            '</div>';
+        return;
+    }
+
+    var html = '<div class="canvas-cards">';
+
+    for (var i = 0; i < selectedTables.length; i++) {
+        var st = selectedTables[i];
+        var tableDef = schema[st.name];
+        if (!tableDef) continue;
+
+        // Determine PK and FK columns
+        var pkCols = {};
+        for (var pi = 0; pi < tableDef.primary_keys.length; pi++) {
+            pkCols[tableDef.primary_keys[pi]] = true;
+        }
+        var fkCols = {};
+        for (var fi = 0; fi < tableDef.foreign_keys.length; fi++) {
+            fkCols[tableDef.foreign_keys[fi].column] = true;
+        }
+
+        // Join indicator before the card (except first)
+        if (i > 0 && st.joinType !== 'CROSS' && st.joinFrom) {
+            var fromAlias = tableAliases[st.joinFrom] || st.joinFrom;
+            html += '<div class="join-indicator">' +
+                '<span class="join-arrow">&#8594;</span> ' +
+                '<span>' + esc(fromAlias) + '.' + esc(st.joinFromCol) + ' = ' + esc(st.alias) + '.' + esc(st.joinToCol) + '</span>' +
+                '</div>';
+        }
+
+        // Join badge class
+        var badgeClass = st.joinType.toLowerCase();
+        var badgeText = st.joinType;
+
+        // Card
+        var isCross = st.joinType === 'CROSS';
+        html += '<div class="table-card' + (isCross ? ' cross-join' : '') + '">' +
+            '<div class="card-head">' +
+            '<span class="card-title" title="' + esc(st.name) + '">' + esc(st.name) + '</span>' +
+            '<span class="card-alias">' + esc(st.alias) + '</span>' +
+            '<span class="join-badge ' + badgeClass + '" onclick="cycleJoinType(\'' + esc(st.name.replace(/'/g, "\\'")) + '\')" title="Click to cycle join type">' + badgeText + '</span>' +
+            '<button class="card-remove" onclick="removeTable(\'' + esc(st.name.replace(/'/g, "\\'")) + '\')" title="Remove table">&times;</button>' +
+            '</div>';
+
+        // Column list
+        html += '<div class="card-body">';
+        var cols = tableDef.columns;
+        for (var ci = 0; ci < cols.length; ci++) {
+            var col = cols[ci];
+            var isChecked = columnSelections[st.name] && columnSelections[st.name][col.name];
+            var icon = '';
+            var iconClass = '';
+            if (pkCols[col.name]) { icon = '&#128273;'; iconClass = 'pk'; }
+            else if (fkCols[col.name]) { icon = '&#128279;'; iconClass = 'fk'; }
+
+            html += '<div class="col-row" onclick="toggleColumn(\'' + esc(st.name.replace(/'/g, "\\'")) + '\', \'' + esc(col.name.replace(/'/g, "\\'")) + '\')">' +
+                '<span class="col-check' + (isChecked ? ' checked' : '') + '">' + (isChecked ? '&#10003;' : '') + '</span>' +
+                '<span class="col-icon ' + iconClass + '">' + icon + '</span>' +
+                '<span class="col-name">' + esc(col.name) + '</span>' +
+                '<span class="col-type">' + esc(col.type) + '</span>' +
+                '</div>';
+        }
+        html += '</div>';
+
+        // Footer with all/none toggle
+        var selCount = 0, totalCount = cols.length;
+        for (var sci2 = 0; sci2 < cols.length; sci2++) {
+            if (columnSelections[st.name] && columnSelections[st.name][cols[sci2].name]) selCount++;
+        }
+        var allChecked = selCount === totalCount;
+        html += '<div class="card-footer">' +
+            '<button class="toggle-all" onclick="toggleAllColumns(\'' + esc(st.name.replace(/'/g, "\\'")) + '\')">' + (allChecked ? 'None' : 'All') + '</button>' +
+            '<span class="col-selected-count">' + selCount + '/' + totalCount + '</span>' +
+            '</div>';
+
+        html += '</div>';
+
+        // Cross join warning
+        if (isCross) {
+            html += '<div class="cross-warn">' +
+                '&#9888; No foreign key path found. This will produce a CROSS JOIN (cartesian product).' +
+                '</div>';
+        }
+    }
+
+    html += '</div>';
+    canvas.innerHTML = html;
+}
+
+// =============================================================================
+// Render: SQL Preview
+// =============================================================================
+function renderSQL() {
+    var sqlBody = document.getElementById('sqlBody');
+    if (!sqlBody) return;
+
+    var sql = generateSQL();
+    if (!sql) {
+        sqlBody.innerHTML = '<span class="sql-empty">Add tables to generate SQL...</span>';
+    } else {
+        sqlBody.innerHTML = '<pre>' + esc(sql) + '</pre>';
+    }
+}
+
+// =============================================================================
+// Type badge color (for future use)
+// =============================================================================
+function typeColor(type) {
+    var t = type.toLowerCase();
+    if (t.indexOf('int') >= 0) return '#3b82f6';
+    if (t.indexOf('varchar') >= 0 || t.indexOf('char') >= 0 || t.indexOf('text') >= 0) return '#22c55e';
+    if (t.indexOf('datetime') >= 0 || t.indexOf('date') >= 0 || t.indexOf('time') >= 0) return '#f59e0b';
+    if (t.indexOf('tinyint') >= 0 || t.indexOf('bit') >= 0 || t.indexOf('bool') >= 0) return '#ec4899';
+    if (t.indexOf('decimal') >= 0 || t.indexOf('float') >= 0 || t.indexOf('double') >= 0) return '#8b5cf6';
+    return '#64748b';
+}
+
+// --- Start ---
+init();
+</script>
+</body>
+</html>
