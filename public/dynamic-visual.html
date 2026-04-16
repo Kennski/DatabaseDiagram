@@ -149,6 +149,9 @@ body {
 .arrows-svg path.dimmed {
     opacity: 0.08;
 }
+.fk-label { transition: opacity 0.2s; pointer-events: none; }
+.fk-label text { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 10px; }
+.arrows-svg.zoom-labels-hidden .fk-label { opacity: 0; }
 
 .cat-label {
     position: absolute;
@@ -908,6 +911,8 @@ function render() {
         const col = catColors[tableCat[r.from]]?.border || '#94a3b8';
         const markerId = col.replace('#', 'arrow_');
         html += `<path id="rel-${i}" data-from="${esc(r.from)}" data-to="${esc(r.to)}" stroke="${col}" marker-end="url(#${markerId})" />`;
+        var labelText = r.fromCols ? r.fromCols.join(', ') : '';
+        html += `<g class="fk-label" id="fk-label-${i}"><rect rx="6" ry="6" fill="var(--bg-primary)" stroke="${col}" stroke-width="0.5" opacity="0.9"/><text fill="var(--text-secondary)" text-anchor="middle" dominant-baseline="central">${escXml(labelText)}</text></g>`;
     }
 
     html += `</svg>`;
@@ -1033,6 +1038,11 @@ function applyTransform() {
     if (!canvas) return;
     canvas.style.transform = `scale(${zoom}) translate(${panX}px, ${panY}px)`;
     document.getElementById('zoomLevel').textContent = Math.round(zoom * 100) + '%';
+    var svgEl = document.getElementById('arrowsSvg');
+    if (svgEl) {
+        if (zoom < 0.6) svgEl.classList.add('zoom-labels-hidden');
+        else svgEl.classList.remove('zoom-labels-hidden');
+    }
     updateMinimap();
 }
 
@@ -1188,6 +1198,26 @@ function updateArrows() {
         }
 
         path.setAttribute('d', `M ${x1} ${y1} C ${cpx1} ${cpy1}, ${cpx2} ${cpy2}, ${x2} ${y2}`);
+
+        // Position FK label at bezier midpoint (t=0.5)
+        var label = document.getElementById('fk-label-' + i);
+        if (label) {
+            var lmx = 0.125*x1 + 0.375*cpx1 + 0.375*cpx2 + 0.125*x2;
+            var lmy = 0.125*y1 + 0.375*cpy1 + 0.375*cpy2 + 0.125*y2;
+            var textEl = label.querySelector('text');
+            var rectEl = label.querySelector('rect');
+            if (textEl && rectEl) {
+                textEl.setAttribute('x', lmx);
+                textEl.setAttribute('y', lmy);
+                var bbox;
+                try { bbox = textEl.getBBox(); } catch(e) { bbox = { width: 40, height: 14 }; }
+                var padX = 6, padY = 3;
+                rectEl.setAttribute('x', lmx - bbox.width/2 - padX);
+                rectEl.setAttribute('y', lmy - bbox.height/2 - padY);
+                rectEl.setAttribute('width', bbox.width + padX*2);
+                rectEl.setAttribute('height', bbox.height + padY*2);
+            }
+        }
     }
 }
 
