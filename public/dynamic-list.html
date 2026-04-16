@@ -381,6 +381,13 @@ body {
 .export-menu button:hover { background: var(--bg-hover); }
 .export-menu button .icon { width: 20px; text-align: center; font-size: 16px; }
 .export-menu hr { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+
+/* Notes / annotations */
+.note-icon { cursor: pointer; opacity: 0; transition: opacity 0.15s; font-size: 12px; margin-left: 6px; }
+.table-header:hover .note-icon, .column-row:hover .note-icon, .note-icon.has-note { opacity: 1; }
+.note-icon.has-note { opacity: 0.7; }
+.note-display { background: var(--accent-bg); padding: 4px 10px; font-size: 12px; color: var(--text-secondary); border-radius: 4px; margin: 4px 14px; font-style: italic; }
+.note-input { width: calc(100% - 28px); margin: 4px 14px; padding: 6px 10px; background: var(--bg-primary); border: 1px solid var(--accent); border-radius: 6px; color: var(--text-primary); font-size: 12px; outline: none; resize: none; font-family: inherit; }
 </style>
 </head>
 <body>
@@ -433,6 +440,21 @@ function toggleTheme() {
         if (btn) btn.textContent = '☀️';
     }
 })();
+
+function getNotesKey() {
+    var raw = sessionStorage.getItem('dbdiagram_data');
+    if (!raw) return 'dbdiagram_notes_unknown';
+    var data = JSON.parse(raw);
+    return 'dbdiagram_notes_' + (data.database || 'unknown').replace(/[^a-zA-Z0-9]/g, '_');
+}
+function loadNotes() {
+    try { return JSON.parse(localStorage.getItem(getNotesKey()) || '{}'); } catch(e) { return {}; }
+}
+function saveNote(key, value) {
+    var notes = loadNotes();
+    if (value && value.trim()) { notes[key] = value.trim(); } else { delete notes[key]; }
+    localStorage.setItem(getNotesKey(), JSON.stringify(notes));
+}
 
 function showToast(msg, duration = 3000) {
     const container = document.getElementById('toastContainer');
@@ -880,6 +902,9 @@ function render() {
     </div>
     <div class="content">`;
 
+    // Load annotations/notes
+    var notes = loadNotes();
+
     // Render each category
     for (const [cat, tableNames] of Object.entries(categories)) {
         const colors = categoryColors[cat];
@@ -906,7 +931,13 @@ function render() {
                     <span class="table-col-count">${table.columns.length} cols</span>`;
             if (fkCount > 0) html += `<span class="table-fk-badge">${fkCount} FK↗</span>`;
             if (incomingFks.length > 0) html += `<span class="table-fk-badge">${incomingFks.length} FK↙</span>`;
-            html += `</div><div class="table-body">`;
+            var hasTableNote = !!notes[tableName];
+            html += `<span class="note-icon ${hasTableNote ? 'has-note' : ''}" onclick="event.stopPropagation();toggleNoteInput('${esc(tableName)}',this)">📝</span>`;
+            html += `</div>`;
+            if (notes[tableName]) {
+                html += `<div class="note-display">${esc(notes[tableName])}</div>`;
+            }
+            html += `<div class="table-body">`;
 
             for (const col of table.columns) {
                 const isPk = table.primary_keys.includes(col.name);
@@ -923,7 +954,13 @@ function render() {
                 if (fk) {
                     html += `<span class="fk-ref" onclick="scrollToTable('${esc(fk.ref_table)}')" title="${esc(fk.ref_table)}.${esc(fk.ref_columns.join(','))}">${esc(fk.ref_table)}</span>`;
                 }
+                var colNoteKey = tableName + '.' + col.name;
+                var hasColNote = !!notes[colNoteKey];
+                html += `<span class="note-icon ${hasColNote ? 'has-note' : ''}" onclick="event.stopPropagation();toggleNoteInput('${esc(colNoteKey)}',this)">📝</span>`;
                 html += `</div>`;
+                if (notes[colNoteKey]) {
+                    html += `<div class="note-display" style="margin-left:30px">${esc(notes[colNoteKey])}</div>`;
+                }
             }
 
             // FK Footer
@@ -1044,6 +1081,36 @@ function scrollToTable(name) {
         }
         setTimeout(() => el.classList.remove('highlight'), 3000);
     }
+}
+
+function toggleNoteInput(key, iconEl) {
+    var safeId = 'note-input-' + key.replace(/[^a-zA-Z0-9]/g, '-');
+    var existing = document.getElementById(safeId);
+    if (existing) { existing.remove(); return; }
+
+    var notes = loadNotes();
+    var input = document.createElement('textarea');
+    input.id = safeId;
+    input.className = 'note-input';
+    input.rows = 2;
+    input.value = notes[key] || '';
+    input.placeholder = 'Add a note...';
+    input.onblur = function() {
+        saveNote(key, this.value);
+        render();
+    };
+    input.onkeydown = function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.blur(); }
+        if (e.key === 'Escape') { this.value = notes[key] || ''; this.blur(); }
+    };
+
+    var parent = iconEl.closest('.table-header') || iconEl.closest('.column-row');
+    if (parent && parent.nextElementSibling) {
+        parent.parentNode.insertBefore(input, parent.nextElementSibling);
+    } else if (parent) {
+        parent.parentNode.appendChild(input);
+    }
+    input.focus();
 }
 
 function filterCategory(cat, btn) {
@@ -1369,6 +1436,7 @@ function downloadMarkdown() {
     const date = new Date().toISOString().split('T')[0];
 
     const { categories, tableCategory } = autoCategorize(schema);
+    var notes = loadNotes();
 
     let md = `# Database Schema: ${dbName}\n`;
     md += `> Generated on ${date} | ${tableCount} tables | ${version}\n\n`;
@@ -1386,6 +1454,8 @@ function downloadMarkdown() {
             const tbl = schema[t];
             if (!tbl) continue;
             md += `### ${t}\n\n`;
+            var tableNote = notes[t];
+            if (tableNote) md += `> ${tableNote}\n\n`;
             md += `| Column | Type | Nullable | Key |\n`;
             md += `|--------|------|----------|-----|\n`;
             for (const col of tbl.columns) {
@@ -1411,6 +1481,12 @@ function downloadMarkdown() {
                 }
                 md += `\n`;
             }
+            var colNotes = [];
+            for (var c of tbl.columns) {
+                var cn = notes[t + '.' + c.name];
+                if (cn) colNotes.push('- **' + c.name + '**: ' + cn);
+            }
+            if (colNotes.length > 0) md += `**Notes:**\n` + colNotes.join('\n') + `\n\n`;
             md += `---\n\n`;
         }
     }
