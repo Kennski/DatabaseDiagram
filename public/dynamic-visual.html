@@ -313,6 +313,15 @@ body {
 .export-menu button .icon { width: 20px; text-align: center; font-size: 16px; }
 .export-menu hr { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
 
+.table-search { padding: 6px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 12px; width: 180px; outline: none; }
+.table-search:focus { border-color: var(--accent); }
+.search-dropdown { display: none; position: absolute; top: 100%; left: 0; right: 0; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; max-height: 200px; overflow-y: auto; z-index: 1500; margin-top: 4px; }
+.search-dropdown.open { display: block; }
+.search-dropdown div { padding: 6px 12px; cursor: pointer; font-size: 12px; color: var(--text-primary); }
+.search-dropdown div:hover { background: var(--bg-hover); }
+@keyframes highlightPulse { 0% { box-shadow: 0 0 0 4px rgba(234,179,8,0.6); } 100% { box-shadow: 0 0 0 0 transparent; } }
+.highlight-pulse { animation: highlightPulse 1.5s ease-out; }
+
 .no-data {
     display: flex;
     align-items: center;
@@ -882,6 +891,10 @@ function render() {
         </button>
         <button class="btn" onclick="zoomFit()">Fit All</button>
         <button class="btn" onclick="resetLayout()">Reset Layout</button>
+        <div class="search-wrapper" id="searchWrapper" style="position:relative">
+            <input type="text" class="table-search" id="diagramSearch" placeholder="Search tables..." autocomplete="off">
+            <div class="search-dropdown" id="searchDropdown"></div>
+        </div>
     </div>
 
     <div class="canvas-wrapper" id="canvasWrapper">
@@ -2166,8 +2179,67 @@ function generateAnalysisSummaryMd(schema) {
     return md;
 }
 
+// --- Table search ---
+document.addEventListener('input', function(e) {
+    if (e.target.id !== 'diagramSearch') return;
+    var query = e.target.value.toLowerCase();
+    var dropdown = document.getElementById('searchDropdown');
+    if (!query) { dropdown.classList.remove('open'); return; }
+    var matches = Object.keys(window._schema || {}).filter(function(t) { return t.toLowerCase().includes(query); }).slice(0, 10);
+    if (matches.length === 0) { dropdown.classList.remove('open'); return; }
+    dropdown.innerHTML = matches.map(function(t) {
+        return '<div onclick="panToTable(\'' + t.replace(/'/g, "\\'") + '\')">' + esc(t) + '</div>';
+    }).join('');
+    dropdown.classList.add('open');
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.target.id !== 'diagramSearch') return;
+    if (e.key === 'Enter') {
+        var first = document.querySelector('#searchDropdown div');
+        if (first) first.click();
+    } else if (e.key === 'Escape') {
+        document.getElementById('searchDropdown').classList.remove('open');
+    }
+});
+
+// Close search dropdown when clicking outside
+document.addEventListener('click', function(e) {
+    var wrapper = document.getElementById('searchWrapper');
+    if (wrapper && !wrapper.contains(e.target)) {
+        document.getElementById('searchDropdown').classList.remove('open');
+    }
+});
+
+function panToTable(tableName) {
+    var pos = window._tablePos[tableName];
+    if (!pos) return;
+    var wrapper = document.getElementById('canvasWrapper');
+    if (!wrapper) return;
+    var wW = wrapper.clientWidth;
+    var wH = wrapper.clientHeight - 50;
+    zoom = 1.0;
+    panX = (wW / zoom) / 2 - (pos.x + pos.w / 2);
+    panY = (wH / zoom) / 2 - (pos.y + pos.h / 2);
+    applyTransform();
+    // Highlight the table
+    var el = document.getElementById('tbl-' + tableName);
+    if (el) {
+        el.classList.remove('highlight-pulse');
+        void el.offsetWidth; // force reflow
+        el.classList.add('highlight-pulse');
+        el.addEventListener('animationend', function() { el.classList.remove('highlight-pulse'); }, { once: true });
+    }
+    // Clear search
+    var input = document.getElementById('diagramSearch');
+    if (input) input.value = '';
+    var dropdown = document.getElementById('searchDropdown');
+    if (dropdown) dropdown.classList.remove('open');
+}
+
 // --- Keyboard shortcuts ---
 document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
     if (e.key === '+' || e.key === '=') zoomIn();
     if (e.key === '-') zoomOut();
     if (e.key === '0') zoomFit();
