@@ -555,6 +555,11 @@ body {
     font-size: 12px;
     font-style: italic;
 }
+
+/* SQL syntax highlighting */
+.sql-kw { color: #c084fc; font-weight: 600; }
+.sql-str { color: #4ade80; }
+.sql-num { color: #fb923c; }
 </style>
 </head>
 <body>
@@ -1353,7 +1358,7 @@ function updateWhere(idx, field, value) {
         // Re-render to show/hide value input
         renderWhere();
     }
-    generateSQL();
+    renderSQL();
     saveState();
 }
 
@@ -1497,6 +1502,60 @@ function generateSQL() {
             var onClause = aliasStr + '.' + quoteId(tbl.joinToCol) +
                 ' = ' + joinFromAlias + '.' + quoteId(tbl.joinFromCol);
             lines.push(tbl.joinType + ' JOIN ' + quotedTable + ' ' + aliasStr + ' ON ' + onClause);
+        }
+    }
+
+    // WHERE conditions
+    var validConditions = whereConditions.filter(function(c) {
+        return c.column && c.operator;
+    });
+
+    if (validConditions.length > 0) {
+        var whereParts = [];
+        for (var wi = 0; wi < validConditions.length; wi++) {
+            var cond = validConditions[wi];
+            var clause = '';
+
+            // Connector (AND/OR) for non-first conditions
+            if (wi > 0) {
+                clause = cond.connector + ' ';
+            }
+
+            // Column reference — the column value is already alias.colName,
+            // but we need to quote the column part properly
+            var dotIdx = cond.column.indexOf('.');
+            var colAlias = cond.column.substring(0, dotIdx);
+            var colName = cond.column.substring(dotIdx + 1);
+            clause += colAlias + '.' + quoteId(colName);
+
+            if (cond.operator === 'IS NULL') {
+                clause += ' IS NULL';
+            } else if (cond.operator === 'IS NOT NULL') {
+                clause += ' IS NOT NULL';
+            } else if (cond.operator === 'IN') {
+                var inVals = cond.value.split(',').map(function(v) { return v.trim(); }).filter(Boolean);
+                var quotedVals = inVals.map(function(v) {
+                    // Keep numbers unquoted, quote strings
+                    if (v !== '' && !isNaN(Number(v))) return v;
+                    return "'" + v.replace(/'/g, "''") + "'";
+                });
+                clause += ' IN (' + quotedVals.join(', ') + ')';
+            } else {
+                clause += ' ' + cond.operator + ' ';
+                var val = cond.value;
+                if (val !== '' && !isNaN(Number(val))) {
+                    clause += val;
+                } else {
+                    clause += "'" + val.replace(/'/g, "''") + "'";
+                }
+            }
+
+            whereParts.push(clause);
+        }
+
+        lines.push('WHERE ' + whereParts[0]);
+        for (var wpi = 1; wpi < whereParts.length; wpi++) {
+            lines.push('    ' + whereParts[wpi]);
         }
     }
 
@@ -1790,6 +1849,42 @@ function renderCanvas() {
 }
 
 // =============================================================================
+// Syntax highlight SQL
+// =============================================================================
+function highlightSQL(sql) {
+    // First escape HTML to prevent injection
+    var safe = esc(sql);
+
+    // Extract single-quoted strings into placeholders before keyword highlighting
+    // esc() does not escape single quotes, so they remain as literal ' in the escaped output
+    var strings = [];
+    safe = safe.replace(/'([^']*)'/g, function(match) {
+        strings.push(match);
+        return '\x00STR' + (strings.length - 1) + '\x00';
+    });
+
+    // Highlight SQL keywords (word boundaries)
+    var keywords = ['SELECT', 'FROM', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'CROSS', 'ON', 'WHERE', 'AND', 'OR', 'AS', 'IN', 'LIKE', 'IS', 'NULL', 'NOT'];
+    var kwPattern = new RegExp('\\b(' + keywords.join('|') + ')\\b', 'g');
+    safe = safe.replace(kwPattern, '<span class="sql-kw">$1</span>');
+
+    // Highlight numbers (standalone numeric literals, not inside identifiers or HTML entities)
+    safe = safe.replace(/\b(\d+(?:\.\d+)?)\b/g, function(match, num, offset) {
+        // Avoid matching inside HTML tags/entities (check preceding characters)
+        var before = safe.substring(Math.max(0, offset - 1), offset);
+        if (before === '#' || before === ';' || before === '"') return match;
+        return '<span class="sql-num">' + num + '</span>';
+    });
+
+    // Restore string placeholders with highlighting
+    safe = safe.replace(/\x00STR(\d+)\x00/g, function(_, idx) {
+        return '<span class="sql-str">' + strings[parseInt(idx)] + '</span>';
+    });
+
+    return safe;
+}
+
+// =============================================================================
 // Render: SQL Preview
 // =============================================================================
 function renderSQL() {
@@ -1800,7 +1895,7 @@ function renderSQL() {
     if (!sql) {
         sqlBody.innerHTML = '<span class="sql-empty">Add tables to generate SQL...</span>';
     } else {
-        sqlBody.innerHTML = '<pre>' + esc(sql) + '</pre>';
+        sqlBody.innerHTML = '<pre>' + highlightSQL(sql) + '</pre>';
     }
 }
 
