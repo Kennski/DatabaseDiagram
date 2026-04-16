@@ -41,6 +41,13 @@ An interactive web-based tool for visualizing and analyzing database schemas. Co
 - **Live SQL Preview** — Real-time syntax-highlighted SQL output that updates as you build. Dialect-aware quoting for MySQL, PostgreSQL, and SQL Server
 - **Copy & Download** — Copy the generated SQL to clipboard or download as a `.sql` file
 
+### Customization & UX
+- **Dark/Light Theme** — Toggle between dark and light themes from the nav bar. Preference persists across sessions and pages
+- **Relationship Labels** — FK column names displayed on diagram arrows for quick reference (auto-hidden when zoomed out)
+- **Table Search** — Search box on the visual diagram toolbar with autocomplete. Selecting a result auto-pans and highlights the table
+- **Compact Mode** — Toggle between detailed (all columns) and compact (PK/FK only) views on the visual diagram for cleaner large-schema visualization
+- **Annotations** — Add persistent notes to tables and columns on the list view. Notes appear as badges on the visual diagram and are included in Markdown exports
+
 ### Schema Comparison
 - **Schema Diff** — Compare two schemas side-by-side from any combination of live connections, SQL files, or the currently loaded schema. Shows added, removed, and modified tables with column-level change details
 - **Diff Export** — Download the comparison as a Markdown report or share via compressed URL
