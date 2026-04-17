@@ -110,6 +110,17 @@ body {
 .btn-back { background: none; border: 1px solid var(--border); color: var(--text-secondary); }
 .btn-back:hover { border-color: var(--accent); color: var(--text-primary); }
 .btn-next:not(:disabled):hover { background: var(--accent-hover); }
+
+/* Step 2: table selector */
+.table-selector { margin-bottom: 20px; }
+.table-row { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border-light); cursor: pointer; }
+.table-row:hover { background: var(--bg-hover); }
+.table-row.expanded { background: var(--accent-bg); }
+.table-settings { padding: 16px; background: var(--bg-primary); border-bottom: 1px solid var(--border); }
+.column-map { width: 100%; font-size: 12px; border-collapse: collapse; }
+.column-map th { text-align: left; padding: 6px 10px; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
+.column-map td { padding: 6px 10px; border-bottom: 1px solid var(--border-light); }
+.status-ok { color: #22c55e; } .status-convert { color: #6366f1; } .status-warn { color: #eab308; } .status-skip { color: var(--text-muted); }
 </style>
 </head>
 <body>
@@ -230,12 +241,19 @@ body {
         </div>
 
         <div class="step-nav">
-            <button class="btn-next" id="step1Next" disabled onclick="goToStep(2)">Next &rarr;</button>
+            <button class="btn-next" id="step1Next" disabled onclick="goToStep2FromStep1()">Next &rarr;</button>
         </div>
     </div>
 
-    <!-- Step 2: Configure (placeholder for Task 6) -->
-    <div class="step-content" id="step2Content"></div>
+    <!-- Step 2: Configure -->
+    <div class="step-content" id="step2Content">
+        <!-- populated by renderStep2() -->
+        <div id="step2Body"></div>
+        <div class="step-nav">
+            <button class="btn-back" onclick="goToStep(1)">&larr; Back</button>
+            <button class="btn-next" id="step2Next" disabled onclick="goToStep(3)">Next &rarr;</button>
+        </div>
+    </div>
 
     <!-- Step 3: Review (placeholder for Task 7) -->
     <div class="step-content" id="step3Content"></div>
@@ -333,6 +351,196 @@ function goToStep(n) {
 function updateNextButton() {
     var next = document.getElementById('step1Next');
     if (next) next.disabled = !(sourceSession && targetSession);
+}
+
+// --- Step 2: transition from Step 1 ---
+function goToStep2FromStep1() {
+    renderStep2();
+    goToStep(2);
+    updateStep2NextButton();
+}
+
+function updateStep2NextButton() {
+    var btn = document.getElementById('step2Next');
+    if (btn) btn.disabled = migrationTables.filter(function(t) { return t.selected; }).length === 0;
+}
+
+// --- Step 2: render ---
+function renderStep2() {
+    var sourceSchema = sourceSession.schema;
+    var targetSchema = targetSession.schema;
+    var html = '<div class="table-selector">';
+    html += '<div style="margin-bottom:12px"><label><input type="checkbox" id="selectAll" onchange="toggleAllMigrateTables(this.checked)"> Select All</label>';
+    html += '<span style="margin-left:12px;color:var(--text-muted)" id="tableCount"></span></div>';
+
+    migrationTables = [];
+    var names = Object.keys(sourceSchema).sort();
+    for (var i = 0; i < names.length; i++) {
+        var name = names[i];
+        var targetTable = targetSchema[name] || targetSchema[name.toLowerCase()];
+        var matched = !!targetTable;
+        if (!matched) continue; // Skip source-only tables in Round 1
+
+        var sourceTable = sourceSchema[name];
+        var columnMap = buildColumnMap(name, sourceTable, targetTable);
+
+        migrationTables.push({
+            name: name,
+            selected: true,
+            strategy: 'insert',
+            columnMap: columnMap
+        });
+
+        html += renderTableRow(name, sourceTable, targetTable, columnMap, migrationTables.length - 1);
+    }
+    html += '</div>';
+    document.getElementById('step2Body').innerHTML = html;
+    updateTableCount();
+    // Sync select-all checkbox state
+    var sa = document.getElementById('selectAll');
+    if (sa) sa.checked = migrationTables.length > 0;
+}
+
+function buildColumnMap(tableName, sourceTable, targetTable) {
+    var map = [];
+    var targetCols = new Map(targetTable.columns.map(function(c) { return [c.name.toLowerCase(), c]; }));
+    for (var i = 0; i < sourceTable.columns.length; i++) {
+        var col = sourceTable.columns[i];
+        var targetCol = targetCols.get(col.name.toLowerCase());
+        var isPK = (sourceTable.primary_keys || []).includes(col.name);
+        var isAutoInc = !!col.auto_increment;
+        var skip = !targetCol || shouldSkipColumnClient(col.type, isAutoInc);
+        var status;
+        if (!targetCol) {
+            status = 'skip';
+        } else if (skip) {
+            status = 'skip';
+        } else if (isCompatible(col.type, targetCol.type)) {
+            status = 'ok';
+        } else {
+            status = 'convert';
+        }
+        map.push({
+            sourceCol: col.name,
+            sourceType: col.type,
+            targetCol: targetCol ? targetCol.name : null,
+            targetType: targetCol ? targetCol.type : null,
+            isPK: isPK,
+            skip: skip,
+            status: status
+        });
+    }
+    return map;
+}
+
+function shouldSkipColumnClient(sourceType, isAutoInc) {
+    if (isAutoInc) return true;
+    var t = sourceType.toLowerCase();
+    return t === 'serial' || t === 'bigserial';
+}
+
+function isCompatible(sourceType, targetType) {
+    function baseType(t) {
+        return t.toLowerCase().replace(/\s*\(.*\)/, '').trim();
+    }
+    return baseType(sourceType) === baseType(targetType);
+}
+
+function renderTableRow(name, sourceTable, targetTable, columnMap, index) {
+    var rowCount = sourceTable.rowCount !== undefined ? ' <span style="color:var(--text-muted);font-size:12px">(' + sourceTable.rowCount + ' rows)</span>' : '';
+    var html = '';
+    html += '<div class="table-row" id="tableRow' + index + '" onclick="toggleRowExpand(' + index + ')">';
+    html += '<input type="checkbox" checked onclick="event.stopPropagation();toggleMigrateTable(' + index + ', this.checked)" id="tableCheck' + index + '">';
+    html += '<span style="font-weight:600;font-size:14px">' + escHtml(name) + '</span>' + rowCount;
+    html += '<span style="margin-left:auto;font-size:12px;color:var(--text-muted)">' + columnMap.length + ' columns &#9660;</span>';
+    html += '</div>';
+
+    html += '<div class="table-settings" id="tableSettings' + index + '" style="display:none">';
+    // Conflict strategy
+    html += '<div style="margin-bottom:12px;display:flex;align-items:center;gap:10px">';
+    html += '<label style="font-size:13px;color:var(--text-secondary)">Conflict strategy:</label>';
+    html += '<select style="background:var(--bg-card);border:1px solid var(--border);color:var(--text-primary);border-radius:6px;padding:4px 10px;font-size:13px" onchange="changeStrategy(' + index + ', this.value)">';
+    html += '<option value="insert">Insert only</option>';
+    html += '<option value="upsert">Upsert</option>';
+    html += '<option value="truncate">Truncate &amp; replace</option>';
+    html += '</select>';
+    html += '</div>';
+    // Column mapping table
+    html += '<table class="column-map">';
+    html += '<thead><tr><th>Source Column</th><th>Source Type</th><th>&rarr;</th><th>Target Column</th><th>Target Type</th><th>Status</th></tr></thead>';
+    html += '<tbody>';
+    for (var i = 0; i < columnMap.length; i++) {
+        var col = columnMap[i];
+        var statusLabel, statusClass;
+        switch (col.status) {
+            case 'ok':      statusLabel = 'OK';       statusClass = 'status-ok';      break;
+            case 'convert': statusLabel = 'Convert';  statusClass = 'status-convert'; break;
+            case 'warn':    statusLabel = 'Warning';  statusClass = 'status-warn';    break;
+            case 'skip':    statusLabel = 'Skip';     statusClass = 'status-skip';    break;
+            default:        statusLabel = col.status; statusClass = 'status-skip';    break;
+        }
+        html += '<tr>';
+        html += '<td>' + escHtml(col.sourceCol) + (col.isPK ? ' <span style="color:var(--text-muted);font-size:10px">PK</span>' : '') + '</td>';
+        html += '<td style="color:var(--text-secondary)">' + escHtml(col.sourceType) + '</td>';
+        html += '<td style="color:var(--text-muted)">&rarr;</td>';
+        html += '<td>' + (col.targetCol ? escHtml(col.targetCol) : '<span style="color:var(--text-muted)">—</span>') + '</td>';
+        html += '<td style="color:var(--text-secondary)">' + (col.targetType ? escHtml(col.targetType) : '<span style="color:var(--text-muted)">—</span>') + '</td>';
+        html += '<td class="' + statusClass + '">' + statusLabel + '</td>';
+        html += '</tr>';
+    }
+    html += '</tbody></table>';
+    html += '</div>';
+    return html;
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function updateTableCount() {
+    var el = document.getElementById('tableCount');
+    if (!el) return;
+    var selected = migrationTables.filter(function(t) { return t.selected; }).length;
+    el.textContent = selected + ' of ' + migrationTables.length + ' tables selected';
+}
+
+function toggleAllMigrateTables(checked) {
+    for (var i = 0; i < migrationTables.length; i++) {
+        migrationTables[i].selected = checked;
+        var cb = document.getElementById('tableCheck' + i);
+        if (cb) cb.checked = checked;
+    }
+    updateTableCount();
+    updateStep2NextButton();
+}
+
+function toggleMigrateTable(index, checked) {
+    migrationTables[index].selected = checked;
+    updateTableCount();
+    updateStep2NextButton();
+    // Update select-all state
+    var all = migrationTables.every(function(t) { return t.selected; });
+    var none = migrationTables.every(function(t) { return !t.selected; });
+    var sa = document.getElementById('selectAll');
+    if (sa) sa.checked = all;
+    if (sa) sa.indeterminate = !all && !none;
+}
+
+function changeStrategy(index, strategy) {
+    migrationTables[index].strategy = strategy;
+}
+
+function toggleRowExpand(index) {
+    var row = document.getElementById('tableRow' + index);
+    var settings = document.getElementById('tableSettings' + index);
+    if (!row || !settings) return;
+    var isExpanded = row.classList.contains('expanded');
+    row.classList.toggle('expanded', !isExpanded);
+    settings.style.display = isExpanded ? 'none' : 'block';
+    // Update arrow indicator
+    var arrow = row.querySelector('span:last-child');
+    if (arrow) arrow.innerHTML = migrationTables[index].columnMap.length + ' columns ' + (isExpanded ? '&#9660;' : '&#9650;');
 }
 
 // --- Connect to database ---
