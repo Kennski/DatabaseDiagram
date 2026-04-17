@@ -19,6 +19,8 @@ const connectionPool = new Map(); // sessionId → { connection, dbType, databas
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 const MAX_SESSIONS = 10;
 
+const migrations = new Map(); // migrationId → { status, tables, currentTable, error, cancelFlag }
+
 function resetIdleTimer(sessionId) {
     const session = connectionPool.get(sessionId);
     if (!session) return;
@@ -438,6 +440,67 @@ app.post('/api/disconnect', async (req, res) => {
 });
 
 /* ================================================================
+   POST /api/migrate
+   Body: { sourceSessionId, targetSessionId, tables }
+   Kicks off a background migration and returns a migrationId.
+   ================================================================ */
+app.post('/api/migrate', async (req, res) => {
+    const { sourceSessionId, targetSessionId, tables } = req.body;
+    const source = connectionPool.get(sourceSessionId);
+    const target = connectionPool.get(targetSessionId);
+
+    if (!source) return res.status(404).json({ error: 'Source session not found or expired.' });
+    if (!target) return res.status(404).json({ error: 'Target session not found or expired.' });
+    if (!tables || tables.length === 0) return res.status(400).json({ error: 'No tables specified.' });
+
+    const migrationId = crypto.randomUUID();
+    const migrationState = {
+        status: 'running',
+        tables: tables.map(t => ({ name: t.name, totalRows: 0, migratedRows: 0, status: 'pending', time: 0, error: null })),
+        currentTable: null,
+        error: null,
+        cancelFlag: false
+    };
+    migrations.set(migrationId, migrationState);
+
+    // Run migration in background (don't await)
+    runMigration(migrationId, source, target, tables, migrationState).catch(err => {
+        migrationState.status = 'error';
+        migrationState.error = err.message;
+    });
+
+    res.json({ migrationId });
+});
+
+/* ================================================================
+   GET /api/migrate/:id/status
+   Returns current migration progress.
+   ================================================================ */
+app.get('/api/migrate/:id/status', (req, res) => {
+    const state = migrations.get(req.params.id);
+    if (!state) return res.status(404).json({ error: 'Migration not found.' });
+    resetIdleTimer(req.query.sourceSessionId || '');
+    resetIdleTimer(req.query.targetSessionId || '');
+    res.json({
+        status: state.status,
+        currentTable: state.currentTable,
+        tables: state.tables,
+        error: state.error
+    });
+});
+
+/* ================================================================
+   POST /api/migrate/:id/cancel
+   Signals the running migration to stop after the current batch.
+   ================================================================ */
+app.post('/api/migrate/:id/cancel', (req, res) => {
+    const state = migrations.get(req.params.id);
+    if (!state) return res.status(404).json({ error: 'Migration not found.' });
+    state.cancelFlag = true;
+    res.json({ cancelled: true });
+});
+
+/* ================================================================
    Cross-Engine Type Conversion
    ================================================================ */
 const TYPE_CONVERSIONS = {
@@ -509,6 +572,241 @@ function shouldSkipColumn(sourceDbType, targetDbType, sourceColType, isAutoIncre
     if (isAutoIncrement) return true;
     const conv = getConversion(sourceDbType, targetDbType, sourceColType);
     return !!conv.skip;
+}
+
+/* ================================================================
+   Migration Engine — runMigration and helper functions
+   ================================================================ */
+async function runMigration(migrationId, source, target, tables, state) {
+    const BATCH_SIZE = 500;
+
+    for (let i = 0; i < tables.length; i++) {
+        if (state.cancelFlag) {
+            for (let j = i; j < tables.length; j++) state.tables[j].status = 'cancelled';
+            break;
+        }
+
+        const tableConfig = tables[i];
+        const tableState = state.tables[i];
+        tableState.status = 'running';
+        state.currentTable = tableConfig.name;
+        const startTime = Date.now();
+
+        try {
+            resetIdleTimer(source.sessionId || '');
+            resetIdleTimer(target.sessionId || '');
+
+            // Get row count
+            const count = await getRowCount(source, tableConfig.name);
+            tableState.totalRows = count;
+
+            // Truncate if strategy requires
+            if (tableConfig.strategy === 'truncate') {
+                await truncateTable(target, tableConfig.name);
+            }
+
+            // Disable FK checks on target
+            await disableFKChecks(target);
+
+            // Migrate in batches
+            let offset = 0;
+            while (offset < count) {
+                if (state.cancelFlag) {
+                    tableState.status = 'cancelled';
+                    break;
+                }
+
+                const rows = await readBatch(source, tableConfig.name, BATCH_SIZE, offset);
+                if (rows.length === 0) break;
+
+                const convertedRows = rows.map(row => convertRow(row, tableConfig.columnMap, source.dbType, target.dbType));
+                await writeBatch(target, tableConfig.name, convertedRows, tableConfig.strategy, tableConfig.columnMap);
+
+                offset += rows.length;
+                tableState.migratedRows = offset;
+            }
+
+            // Re-enable FK checks
+            await enableFKChecks(target);
+
+            if (tableState.status !== 'cancelled') {
+                tableState.status = 'done';
+            }
+        } catch (err) {
+            tableState.status = 'error';
+            tableState.error = err.message;
+            try { await enableFKChecks(target); } catch(e) {}
+        }
+
+        tableState.time = Date.now() - startTime;
+    }
+
+    state.currentTable = null;
+    if (!state.cancelFlag && state.tables.every(t => t.status === 'done' || t.status === 'error')) {
+        state.status = 'complete';
+    } else if (state.cancelFlag) {
+        state.status = 'cancelled';
+    }
+}
+
+async function getRowCount(session, tableName) {
+    const q = `SELECT COUNT(*) as cnt FROM ${quoteIdentifier(session.dbType, tableName)}`;
+    if (session.dbType === 'mysql' || session.dbType === 'mariadb') {
+        const [rows] = await session.connection.query(q);
+        return rows[0].cnt;
+    } else if (session.dbType === 'postgres' || session.dbType === 'postgresql') {
+        const result = await session.connection.query(q);
+        return parseInt(result.rows[0].cnt);
+    } else {
+        const result = await session.connection.request().query(q);
+        return result.recordset[0].cnt;
+    }
+}
+
+async function readBatch(session, tableName, limit, offset) {
+    const table = quoteIdentifier(session.dbType, tableName);
+    let q;
+    if (session.dbType === 'mssql' || session.dbType === 'sqlserver') {
+        q = `SELECT * FROM ${table} ORDER BY (SELECT NULL) OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`;
+    } else {
+        q = `SELECT * FROM ${table} LIMIT ${limit} OFFSET ${offset}`;
+    }
+
+    if (session.dbType === 'mysql' || session.dbType === 'mariadb') {
+        const [rows] = await session.connection.query(q);
+        return rows;
+    } else if (session.dbType === 'postgres' || session.dbType === 'postgresql') {
+        const result = await session.connection.query(q);
+        return result.rows;
+    } else {
+        const result = await session.connection.request().query(q);
+        return result.recordset;
+    }
+}
+
+function convertRow(row, columnMap, sourceDbType, targetDbType) {
+    const result = {};
+    for (const col of columnMap) {
+        if (col.skip) continue;
+        const value = row[col.sourceCol];
+        if (value === null || value === undefined) {
+            result[col.targetCol] = null;
+        } else {
+            const conv = getConversion(sourceDbType, targetDbType, col.sourceType);
+            result[col.targetCol] = conv.convert(value);
+        }
+    }
+    return result;
+}
+
+async function writeBatch(session, tableName, rows, strategy, columnMap) {
+    if (rows.length === 0) return;
+    const table = quoteIdentifier(session.dbType, tableName);
+    const cols = columnMap.filter(c => !c.skip).map(c => c.targetCol);
+    const quotedCols = cols.map(c => quoteIdentifier(session.dbType, c));
+
+    for (const row of rows) {
+        const values = cols.map(c => row[c]);
+
+        if (session.dbType === 'mysql' || session.dbType === 'mariadb') {
+            const placeholders = cols.map(() => '?').join(', ');
+            if (strategy === 'upsert') {
+                const updates = quotedCols.map(c => `${c} = VALUES(${c})`).join(', ');
+                await session.connection.query(
+                    `INSERT INTO ${table} (${quotedCols.join(', ')}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${updates}`,
+                    values
+                );
+            } else {
+                await session.connection.query(
+                    `INSERT IGNORE INTO ${table} (${quotedCols.join(', ')}) VALUES (${placeholders})`,
+                    values
+                );
+            }
+        } else if (session.dbType === 'postgres' || session.dbType === 'postgresql') {
+            const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
+            const pkCols = columnMap.filter(c => c.isPK && !c.skip).map(c => quoteIdentifier(session.dbType, c.targetCol));
+            if (strategy === 'upsert' && pkCols.length > 0) {
+                const updates = quotedCols.filter(c => !pkCols.includes(c)).map(c => `${c} = EXCLUDED.${c}`).join(', ');
+                await session.connection.query(
+                    `INSERT INTO ${table} (${quotedCols.join(', ')}) VALUES (${placeholders}) ON CONFLICT (${pkCols.join(', ')}) DO UPDATE SET ${updates}`,
+                    values
+                );
+            } else {
+                const onConflict = pkCols.length > 0 ? ` ON CONFLICT (${pkCols.join(', ')}) DO NOTHING` : '';
+                await session.connection.query(
+                    `INSERT INTO ${table} (${quotedCols.join(', ')}) VALUES (${placeholders})${onConflict}`,
+                    values
+                );
+            }
+        } else {
+            // SQL Server — use MERGE for upsert, simple INSERT for insert-only
+            const valuesStr = values.map(v => v === null ? 'NULL' : typeof v === 'string' ? `N'${v.replace(/'/g, "''")}'` : v).join(', ');
+            if (strategy === 'upsert') {
+                // Simple approach: try INSERT, if fails try UPDATE
+                try {
+                    await session.connection.request().query(
+                        `INSERT INTO ${table} (${quotedCols.join(', ')}) VALUES (${valuesStr})`
+                    );
+                } catch (e) {
+                    if (e.number === 2627 || e.number === 2601) {
+                        // Duplicate key — update instead
+                        const pkCol = columnMap.find(c => c.isPK && !c.skip);
+                        if (pkCol) {
+                            const setClause = quotedCols.map((c, i) => `${c} = ${values[i] === null ? 'NULL' : typeof values[i] === 'string' ? `N'${values[i].replace(/'/g, "''")}'` : values[i]}`).join(', ');
+                            const pkValue = row[pkCol.targetCol];
+                            await session.connection.request().query(
+                                `UPDATE ${table} SET ${setClause} WHERE ${quoteIdentifier(session.dbType, pkCol.targetCol)} = ${typeof pkValue === 'string' ? `N'${pkValue.replace(/'/g, "''")}'` : pkValue}`
+                            );
+                        }
+                    } else { throw e; }
+                }
+            } else {
+                try {
+                    await session.connection.request().query(
+                        `INSERT INTO ${table} (${quotedCols.join(', ')}) VALUES (${valuesStr})`
+                    );
+                } catch (e) {
+                    if (e.number !== 2627 && e.number !== 2601) throw e;
+                    // Duplicate — skip for insert-only strategy
+                }
+            }
+        }
+    }
+}
+
+async function truncateTable(session, tableName) {
+    const table = quoteIdentifier(session.dbType, tableName);
+    const q = `DELETE FROM ${table}`;
+    if (session.dbType === 'mysql' || session.dbType === 'mariadb') {
+        await session.connection.query(q);
+    } else if (session.dbType === 'postgres' || session.dbType === 'postgresql') {
+        await session.connection.query(q);
+    } else {
+        await session.connection.request().query(q);
+    }
+}
+
+async function disableFKChecks(session) {
+    if (session.dbType === 'mysql' || session.dbType === 'mariadb') {
+        await session.connection.query('SET FOREIGN_KEY_CHECKS = 0');
+    } else if (session.dbType === 'postgres' || session.dbType === 'postgresql') {
+        await session.connection.query("SET session_replication_role = 'replica'");
+    }
+    // SQL Server: handled per-table if needed
+}
+
+async function enableFKChecks(session) {
+    if (session.dbType === 'mysql' || session.dbType === 'mariadb') {
+        await session.connection.query('SET FOREIGN_KEY_CHECKS = 1');
+    } else if (session.dbType === 'postgres' || session.dbType === 'postgresql') {
+        await session.connection.query("SET session_replication_role = 'origin'");
+    }
+}
+
+function quoteIdentifier(dbType, name) {
+    if (dbType === 'mysql' || dbType === 'mariadb') return '`' + name + '`';
+    if (dbType === 'postgres' || dbType === 'postgresql') return '"' + name + '"';
+    return '[' + name + ']';
 }
 
 /* ================================================================
