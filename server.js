@@ -353,8 +353,10 @@ app.post('/api/connect', async (req, res) => {
         return res.status(400).json({ error: 'host and database are required.' });
     }
 
+    let connection;
+
     try {
-        let connection, result;
+        let result;
         const type = (dbType || 'mysql').toLowerCase();
 
         switch (type) {
