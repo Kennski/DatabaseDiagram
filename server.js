@@ -3,6 +3,7 @@ const mysql = require('mysql2/promise');
 const { Client: PgClient } = require('pg');
 const mssql = require('mssql');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -10,6 +11,43 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Also serve the old static diagram pages from root
 app.use(express.static(__dirname));
+
+/* ================================================================
+   Connection Pool Manager — persistent DB sessions for migration
+   ================================================================ */
+const connectionPool = new Map(); // sessionId → { connection, dbType, database, version, schema, lastActivity, timeoutHandle }
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+const MAX_SESSIONS = 10;
+
+function resetIdleTimer(sessionId) {
+    const session = connectionPool.get(sessionId);
+    if (!session) return;
+    clearTimeout(session.timeoutHandle);
+    session.lastActivity = Date.now();
+    session.timeoutHandle = setTimeout(() => closeSession(sessionId), IDLE_TIMEOUT_MS);
+}
+
+async function closeSession(sessionId) {
+    const session = connectionPool.get(sessionId);
+    if (!session) return;
+    clearTimeout(session.timeoutHandle);
+    try {
+        if (session.dbType === 'mysql' || session.dbType === 'mariadb') {
+            await session.connection.end();
+        } else if (session.dbType === 'postgres' || session.dbType === 'postgresql') {
+            await session.connection.end();
+        } else if (session.dbType === 'mssql' || session.dbType === 'sqlserver') {
+            await session.connection.close();
+        }
+    } catch (e) { /* ignore close errors */ }
+    connectionPool.delete(sessionId);
+}
+
+// Cleanup all sessions on server shutdown
+process.on('SIGINT', async () => {
+    for (const [id] of connectionPool) await closeSession(id);
+    process.exit(0);
+});
 
 /* ================================================================
    Helper: build the common schema object from raw query results
@@ -299,6 +337,96 @@ async function fetchMssqlSchema(host, port, user, password, database) {
         await pool.close();
     }
 }
+
+/* ================================================================
+   POST /api/connect
+   Body: { dbType, host, port, user, password, database }
+   Opens a persistent connection and stores it in the pool.
+   ================================================================ */
+app.post('/api/connect', async (req, res) => {
+    if (connectionPool.size >= MAX_SESSIONS) {
+        return res.status(503).json({ error: 'Maximum concurrent sessions reached. Disconnect an existing session first.' });
+    }
+
+    const { dbType, host, port, user, password, database } = req.body;
+    if (!host || !database) {
+        return res.status(400).json({ error: 'host and database are required.' });
+    }
+
+    try {
+        let connection, result;
+        const type = (dbType || 'mysql').toLowerCase();
+
+        switch (type) {
+            case 'mysql':
+            case 'mariadb': {
+                connection = await mysql.createConnection({
+                    host, port: parseInt(port) || 3306, user, password: password || '', database
+                });
+                result = await fetchMysqlSchema(host, port, user, password, database);
+                // Re-create connection for persistent use (fetchMysqlSchema closes its own)
+                connection = await mysql.createConnection({
+                    host, port: parseInt(port) || 3306, user, password: password || '', database
+                });
+                break;
+            }
+            case 'postgres':
+            case 'postgresql': {
+                result = await fetchPostgresSchema(host, port, user, password, database);
+                connection = new PgClient({
+                    host, port: parseInt(port) || 5432, user, password: password || '', database
+                });
+                await connection.connect();
+                break;
+            }
+            case 'mssql':
+            case 'sqlserver': {
+                const config = {
+                    server: host, port: parseInt(port) || 1433, database,
+                    options: { encrypt: false, trustServerCertificate: true }
+                };
+                if (user) { config.user = user; config.password = password || ''; }
+                else { config.options.trustedConnection = true; }
+                result = await fetchMssqlSchema(host, port, user, password, database);
+                connection = await mssql.connect(config);
+                break;
+            }
+            default:
+                return res.status(400).json({ error: 'Unsupported database type: ' + dbType });
+        }
+
+        const sessionId = crypto.randomUUID();
+        const session = {
+            connection, dbType: type, database, version: result.version,
+            schema: result.schema, lastActivity: Date.now(), timeoutHandle: null
+        };
+        connectionPool.set(sessionId, session);
+        resetIdleTimer(sessionId);
+
+        res.json({
+            sessionId, database, version: result.version,
+            tableCount: Object.keys(result.schema).length,
+            schema: result.schema
+        });
+    } catch (err) {
+        console.error('Connect error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/* ================================================================
+   POST /api/disconnect
+   Body: { sessionId }
+   Closes the persistent connection and removes it from the pool.
+   ================================================================ */
+app.post('/api/disconnect', async (req, res) => {
+    const { sessionId } = req.body;
+    if (!sessionId || !connectionPool.has(sessionId)) {
+        return res.status(404).json({ error: 'Session not found.' });
+    }
+    await closeSession(sessionId);
+    res.json({ disconnected: true });
+});
 
 /* ================================================================
    POST /api/schema
