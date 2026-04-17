@@ -462,7 +462,7 @@ const TYPE_CONVERSIONS = {
     },
     // MySQL → SQL Server
     'mysql>mssql': {
-        'tinyint(1)': { targetType: 'bit', convert: v => v ? 1 : 0 },
+        'tinyint(1)': { targetType: 'bit', convert: v => (v === 1 || v === '1' || v === true) ? 1 : 0 },
         'text': { targetType: 'nvarchar(max)', convert: v => v },
         'longtext': { targetType: 'nvarchar(max)', convert: v => v },
         'double': { targetType: 'float', convert: v => v },
@@ -488,6 +488,7 @@ const TYPE_CONVERSIONS = {
     'postgres>mssql': {
         'boolean': { targetType: 'bit', convert: v => v ? 1 : 0 },
         'serial': { targetType: 'int', skip: true },
+        'bigserial': { targetType: 'bigint', skip: true },
         'text': { targetType: 'nvarchar(max)', convert: v => v },
         'jsonb': { targetType: 'nvarchar(max)', convert: v => typeof v === 'string' ? v : JSON.stringify(v) },
         'json': { targetType: 'nvarchar(max)', convert: v => typeof v === 'string' ? v : JSON.stringify(v) },
