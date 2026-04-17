@@ -438,6 +438,79 @@ app.post('/api/disconnect', async (req, res) => {
 });
 
 /* ================================================================
+   Cross-Engine Type Conversion
+   ================================================================ */
+const TYPE_CONVERSIONS = {
+    // MySQL → PostgreSQL
+    'mysql>postgres': {
+        'tinyint(1)': { targetType: 'boolean', convert: v => v === 1 || v === '1' || v === true },
+        'tinyint': { targetType: 'smallint', convert: v => v },
+        'double': { targetType: 'double precision', convert: v => v },
+        'datetime': { targetType: 'timestamp', convert: v => v },
+        'longtext': { targetType: 'text', convert: v => v },
+        'mediumtext': { targetType: 'text', convert: v => v },
+    },
+    // PostgreSQL → MySQL
+    'postgres>mysql': {
+        'boolean': { targetType: 'tinyint(1)', convert: v => v ? 1 : 0 },
+        'serial': { targetType: 'int', skip: true },
+        'bigserial': { targetType: 'bigint', skip: true },
+        'double precision': { targetType: 'double', convert: v => v },
+        'timestamp without time zone': { targetType: 'datetime', convert: v => v },
+        'timestamp with time zone': { targetType: 'datetime', convert: v => v },
+        'jsonb': { targetType: 'json', convert: v => typeof v === 'string' ? v : JSON.stringify(v) },
+    },
+    // MySQL → SQL Server
+    'mysql>mssql': {
+        'tinyint(1)': { targetType: 'bit', convert: v => v ? 1 : 0 },
+        'text': { targetType: 'nvarchar(max)', convert: v => v },
+        'longtext': { targetType: 'nvarchar(max)', convert: v => v },
+        'double': { targetType: 'float', convert: v => v },
+        'datetime': { targetType: 'datetime2', convert: v => v },
+    },
+    // SQL Server → MySQL
+    'mssql>mysql': {
+        'bit': { targetType: 'tinyint(1)', convert: v => v ? 1 : 0 },
+        'nvarchar': { targetType: 'varchar', convert: v => v },
+        'datetime2': { targetType: 'datetime', convert: v => v },
+        'uniqueidentifier': { targetType: 'varchar(36)', convert: v => String(v) },
+        'money': { targetType: 'decimal(19,4)', convert: v => v },
+    },
+    // SQL Server → PostgreSQL
+    'mssql>postgres': {
+        'bit': { targetType: 'boolean', convert: v => !!v },
+        'nvarchar': { targetType: 'varchar', convert: v => v },
+        'datetime2': { targetType: 'timestamp', convert: v => v },
+        'uniqueidentifier': { targetType: 'varchar(36)', convert: v => String(v) },
+        'money': { targetType: 'numeric(19,4)', convert: v => v },
+    },
+    // PostgreSQL → SQL Server
+    'postgres>mssql': {
+        'boolean': { targetType: 'bit', convert: v => v ? 1 : 0 },
+        'serial': { targetType: 'int', skip: true },
+        'text': { targetType: 'nvarchar(max)', convert: v => v },
+        'jsonb': { targetType: 'nvarchar(max)', convert: v => typeof v === 'string' ? v : JSON.stringify(v) },
+        'json': { targetType: 'nvarchar(max)', convert: v => typeof v === 'string' ? v : JSON.stringify(v) },
+    }
+};
+
+function getConversion(sourceDbType, targetDbType, sourceColType) {
+    const key = sourceDbType.replace('mariadb','mysql').replace('postgresql','postgres').replace('sqlserver','mssql')
+        + '>' + targetDbType.replace('mariadb','mysql').replace('postgresql','postgres').replace('sqlserver','mssql');
+    const map = TYPE_CONVERSIONS[key] || {};
+    const normalizedType = sourceColType.toLowerCase().trim();
+    // Try exact match, then base type (strip size)
+    return map[normalizedType] || map[normalizedType.replace(/\(.*\)/, '')] || { convert: v => v };
+}
+
+function shouldSkipColumn(sourceDbType, targetDbType, sourceColType, isAutoIncrement) {
+    // Skip auto-increment/serial/identity columns — let the target DB handle them
+    if (isAutoIncrement) return true;
+    const conv = getConversion(sourceDbType, targetDbType, sourceColType);
+    return !!conv.skip;
+}
+
+/* ================================================================
    POST /api/schema
    Body: { dbType, host, port, user, password, database }
    ================================================================ */
