@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Migrate — DatabaseDiagram</title>
+<style>
+:root {
+    --bg-primary: #0f172a;
+    --bg-card: #1e293b;
+    --bg-hover: #334155;
+    --border: #334155;
+    --border-light: #1e293b;
+    --text-primary: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --accent-bg: rgba(99,102,241,0.12);
+}
+[data-theme="light"] {
+    --bg-primary: #f8fafc;
+    --bg-card: #ffffff;
+    --bg-hover: #f1f5f9;
+    --border: #e2e8f0;
+    --border-light: #f1f5f9;
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --text-muted: #94a3b8;
+    --accent: #4f46e5;
+    --accent-hover: #6366f1;
+    --accent-bg: rgba(79,70,229,0.08);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+}
+
+/* Global nav bar */
+.global-nav { position: sticky; top: 0; z-index: 100; background: var(--bg-primary); border-bottom: 1px solid var(--border-light); padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 50px; }
+.nav-left { display: flex; align-items: center; gap: 12px; }
+.nav-left .app-name { color: var(--text-primary); font-size: 15px; font-weight: 700; text-decoration: none; }
+.nav-left .app-name:hover { color: var(--accent-hover); }
+.db-badge { background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.nav-center { display: flex; align-items: center; gap: 4px; }
+.nav-tab { color: var(--text-secondary); text-decoration: none; font-size: 13px; font-weight: 500; padding: 14px 16px; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; }
+.nav-tab:hover { color: var(--text-primary); }
+.nav-tab.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+.nav-tab.diff-tab { opacity: 0.4; }
+.nav-tab.diff-tab.has-diff { opacity: 1; }
+.nav-tab.query-tab { opacity: 0.4; }
+.nav-tab.query-tab.has-query { opacity: 1; }
+.nav-right { display: flex; align-items: center; gap: 10px; }
+.nav-new-btn { border: 1px solid var(--border); background: transparent; color: var(--text-secondary); border-radius: 8px; padding: 6px 14px; font-size: 12px; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.nav-new-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+
+/* Theme toggle */
+.theme-toggle { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 16px; line-height: 1; }
+.theme-toggle:hover { border-color: var(--accent); }
+
+/* Toast */
+.toast-container { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.toast { background: var(--bg-card); color: var(--text-primary); padding: 12px 24px; border-radius: 8px; font-size: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); border: 1px solid rgba(99,102,241,0.3); animation: toastIn 0.3s ease; pointer-events: auto; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+.toast.fade-out { animation: toastOut 0.3s ease forwards; }
+@keyframes toastOut { to { opacity: 0; transform: translateY(12px); } }
+
+/* Step indicator */
+.step-bar { display: flex; justify-content: center; gap: 8px; padding: 16px; border-bottom: 1px solid var(--border); }
+.step { padding: 8px 20px; border-radius: 20px; font-size: 13px; color: var(--text-muted); background: var(--bg-card); border: 1px solid var(--border); }
+.step.active { color: var(--accent); border-color: var(--accent); background: var(--accent-bg); }
+.step.done { color: #22c55e; border-color: #22c55e; }
+
+/* Migrate container */
+.migrate-container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+/* Step content */
+.step-content { display: none; }
+.step-content.active { display: block; }
+
+/* Connection panels */
+.connect-panels { display: flex; gap: 20px; }
+.connect-panel { flex: 1; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+.connect-panel h3 { color: var(--text-primary); font-size: 16px; margin-bottom: 16px; }
+
+/* Form fields */
+.form-group { margin-bottom: 10px; }
+.form-group label { display: block; color: var(--text-secondary); font-size: 12px; margin-bottom: 4px; }
+.form-group input, .form-group select { width: 100%; padding: 8px 12px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 13px; }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
+.form-row { display: flex; gap: 10px; }
+.form-row .form-group { flex: 1; }
+
+/* Connection badge */
+.connect-badge { display: none; background: rgba(34,197,94,0.15); border: 1px solid #22c55e; color: #22c55e; padding: 6px 14px; border-radius: 20px; font-size: 13px; margin-top: 12px; }
+
+/* Connect button */
+.connect-btn { padding: 9px 22px; background: var(--accent); color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; margin-top: 10px; }
+.connect-btn:hover { background: var(--accent-hover); }
+.connect-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Navigation buttons */
+.step-nav { display: flex; justify-content: center; gap: 12px; margin-top: 24px; }
+.step-nav button { padding: 10px 28px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.btn-next { background: var(--accent); color: #fff; border: none; }
+.btn-next:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-back { background: none; border: 1px solid var(--border); color: var(--text-secondary); }
+.btn-back:hover { border-color: var(--accent); color: var(--text-primary); }
+.btn-next:not(:disabled):hover { background: var(--accent-hover); }
+</style>
+</head>
+<body>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<nav class="global-nav">
+    <div class="nav-left">
+        <a href="/" class="app-name">DatabaseDiagram</a>
+        <span class="db-badge" id="dbBadge"></span>
+    </div>
+    <div class="nav-center">
+        <a href="/dynamic-list.html" class="nav-tab">Table List</a>
+        <a href="/dynamic-visual.html" class="nav-tab">Visual Diagram</a>
+        <a href="/dynamic-analysis.html" class="nav-tab">Analysis</a>
+        <a href="/dynamic-diff.html" class="nav-tab diff-tab" id="diffTab">Diff</a>
+        <a href="/dynamic-query.html" class="nav-tab query-tab" id="queryTab">Query</a>
+        <a href="/dynamic-migrate.html" class="nav-tab migrate-tab active" id="migrateTab">Migrate</a>
+    </div>
+    <div class="nav-right">
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+        <a href="/" class="nav-new-btn">&#8592; New Connection</a>
+    </div>
+</nav>
+
+<!-- Step indicator bar -->
+<div class="step-bar">
+    <span class="step active" id="stepInd1">1. Connect</span>
+    <span class="step" id="stepInd2">2. Configure</span>
+    <span class="step" id="stepInd3">3. Review</span>
+    <span class="step" id="stepInd4">4. Execute</span>
+</div>
+
+<div class="migrate-container">
+
+    <!-- Step 1: Connect -->
+    <div class="step-content active" id="step1Content">
+        <div class="connect-panels">
+            <!-- Source panel -->
+            <div class="connect-panel">
+                <h3>Source (A) &mdash; Read from</h3>
+                <div class="form-group">
+                    <label>Database Type</label>
+                    <select id="srcDbType">
+                        <option value="mysql">MySQL</option>
+                        <option value="postgres">PostgreSQL</option>
+                        <option value="mssql">SQL Server</option>
+                        <option value="mariadb">MariaDB</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Host</label>
+                        <input type="text" id="srcHost" placeholder="localhost">
+                    </div>
+                    <div class="form-group">
+                        <label>Port</label>
+                        <input type="text" id="srcPort" placeholder="3306">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>User</label>
+                        <input type="text" id="srcUser" placeholder="root">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="srcPassword">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Database</label>
+                    <input type="text" id="srcDatabase" placeholder="mydb">
+                </div>
+                <button class="connect-btn" onclick="connectDB('source')">Connect</button>
+                <div class="connect-badge" id="srcBadge"></div>
+            </div>
+
+            <!-- Target panel -->
+            <div class="connect-panel">
+                <h3>Target (B) &mdash; Write to</h3>
+                <div class="form-group">
+                    <label>Database Type</label>
+                    <select id="tgtDbType">
+                        <option value="mysql">MySQL</option>
+                        <option value="postgres">PostgreSQL</option>
+                        <option value="mssql">SQL Server</option>
+                        <option value="mariadb">MariaDB</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Host</label>
+                        <input type="text" id="tgtHost" placeholder="localhost">
+                    </div>
+                    <div class="form-group">
+                        <label>Port</label>
+                        <input type="text" id="tgtPort" placeholder="3306">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>User</label>
+                        <input type="text" id="tgtUser" placeholder="root">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="tgtPassword">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Database</label>
+                    <input type="text" id="tgtDatabase" placeholder="mydb">
+                </div>
+                <button class="connect-btn" onclick="connectDB('target')">Connect</button>
+                <div class="connect-badge" id="tgtBadge"></div>
+            </div>
+        </div>
+
+        <div class="step-nav">
+            <button class="btn-next" id="step1Next" disabled onclick="goToStep(2)">Next &rarr;</button>
+        </div>
+    </div>
+
+    <!-- Step 2: Configure (placeholder for Task 6) -->
+    <div class="step-content" id="step2Content"></div>
+
+    <!-- Step 3: Review (placeholder for Task 7) -->
+    <div class="step-content" id="step3Content"></div>
+
+    <!-- Step 4: Execute (placeholder for Task 8) -->
+    <div class="step-content" id="step4Content"></div>
+
+</div>
+
+<script>
+// --- State ---
+var sourceSession = null;
+var targetSession = null;
+var currentStep = 1;
+var migrationTables = [];
+var currentMigrationId = null;
+
+// --- Theme toggle ---
+function toggleTheme() {
+    var html = document.documentElement;
+    var next = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('dbdiagram_theme', next);
+    document.getElementById('themeToggle').textContent = next === 'light' ? '☀️' : '🌙';
+}
+(function() {
+    var theme = localStorage.getItem('dbdiagram_theme') || 'dark';
+    if (theme === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        var btn = document.getElementById('themeToggle');
+        if (btn) btn.textContent = '☀️';
+    }
+})();
+
+// --- Tab visibility IIFEs ---
+(function() {
+    var queryTab = document.getElementById('queryTab');
+    if (queryTab && sessionStorage.getItem('dbdiagram_query_state')) {
+        queryTab.classList.add('has-query');
+    }
+})();
+
+(function() {
+    var diffTab = document.getElementById('diffTab');
+    if (diffTab && sessionStorage.getItem('dbdiagram_diff_state')) {
+        diffTab.classList.add('has-diff');
+    }
+})();
+
+// --- Nav bar: db badge ---
+(function() {
+    var raw = sessionStorage.getItem('dbdiagram_data');
+    if (raw) {
+        try {
+            var data = JSON.parse(raw);
+            var badge = document.getElementById('dbBadge');
+            if (badge && data.database) {
+                badge.textContent = data.database + (data.version ? ' (' + data.version + ')' : '');
+            }
+        } catch (e) {}
+    }
+})();
+
+// --- Toast ---
+function showToast(msg, duration) {
+    if (duration === undefined) duration = 3000;
+    var container = document.getElementById('toastContainer');
+    var toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = msg;
+    container.appendChild(toast);
+    setTimeout(function() {
+        toast.classList.add('fade-out');
+        toast.addEventListener('animationend', function() { toast.remove(); });
+    }, duration);
+}
+
+// --- Step indicator ---
+function goToStep(n) {
+    for (var i = 1; i <= 4; i++) {
+        var el = document.getElementById('stepInd' + i);
+        if (!el) continue;
+        el.classList.remove('active', 'done');
+        if (i < n) el.classList.add('done');
+        else if (i === n) el.classList.add('active');
+    }
+    for (var i = 1; i <= 4; i++) {
+        var c = document.getElementById('step' + i + 'Content');
+        if (c) c.classList.toggle('active', i === n);
+    }
+    currentStep = n;
+}
+
+// --- Next button state ---
+function updateNextButton() {
+    var next = document.getElementById('step1Next');
+    if (next) next.disabled = !(sourceSession && targetSession);
+}
+
+// --- Connect to database ---
+async function connectDB(side) {
+    var prefix = side === 'source' ? 'src' : 'tgt';
+    var body = {
+        dbType: document.getElementById(prefix + 'DbType').value,
+        host: document.getElementById(prefix + 'Host').value.trim(),
+        port: document.getElementById(prefix + 'Port').value.trim(),
+        user: document.getElementById(prefix + 'User').value.trim(),
+        password: document.getElementById(prefix + 'Password').value,
+        database: document.getElementById(prefix + 'Database').value.trim()
+    };
+
+    if (!body.host || !body.database) {
+        showToast('Host and database are required');
+        return;
+    }
+
+    var btn = document.querySelector('.connect-panel:' + (side === 'source' ? 'first-child' : 'last-child') + ' .connect-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Connecting...'; }
+
+    try {
+        var res = await fetch('/api/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        var data = await res.json();
+        if (data.error) {
+            showToast('Connect failed: ' + data.error);
+            if (btn) { btn.disabled = false; btn.textContent = 'Connect'; }
+            return;
+        }
+
+        if (side === 'source') sourceSession = data;
+        else targetSession = data;
+
+        var badgeEl = document.getElementById(prefix + 'Badge');
+        badgeEl.textContent = '\u2713 ' + data.database + ' \u2014 ' + data.tableCount + ' tables' + (data.version ? ' \u2014 ' + data.version : '');
+        badgeEl.style.display = 'inline-block';
+
+        if (btn) { btn.disabled = false; btn.textContent = 'Reconnect'; }
+
+        sessionStorage.setItem('dbdiagram_migrate_session', 'active');
+        updateNextButton();
+        showToast('Connected to ' + data.database);
+    } catch (err) {
+        showToast('Connect failed: ' + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = 'Connect'; }
+    }
+}
+</script>
+</body>
+</html>
