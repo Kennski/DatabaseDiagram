@@ -121,6 +121,19 @@ body {
 .column-map th { text-align: left; padding: 6px 10px; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
 .column-map td { padding: 6px 10px; border-bottom: 1px solid var(--border-light); }
 .status-ok { color: #22c55e; } .status-convert { color: #6366f1; } .status-warn { color: #eab308; } .status-skip { color: var(--text-muted); }
+
+/* Step 3: Review */
+.review-summary { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; max-width: 800px; margin: 0 auto; }
+.review-info { margin-bottom: 16px; color: var(--text-secondary); line-height: 1.8; }
+.review-warnings { background: rgba(234,179,8,0.08); border: 1px solid #eab308; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+.warning-item { padding: 4px 0; font-size: 13px; color: #eab308; }
+.review-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
+.review-table th { text-align: left; padding: 8px 12px; border-bottom: 2px solid var(--border); color: var(--text-secondary); }
+.review-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-light); color: var(--text-primary); }
+.confirm-section { border-top: 1px solid var(--border); padding-top: 20px; margin-top: 20px; }
+.confirm-check { display: block; margin-bottom: 16px; font-size: 14px; color: var(--text-primary); cursor: pointer; }
+.confirm-input label { display: block; margin-bottom: 6px; font-size: 13px; color: var(--text-secondary); }
+.confirm-input input { width: 100%; padding: 10px 14px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 14px; }
 </style>
 </head>
 <body>
@@ -251,12 +264,18 @@ body {
         <div id="step2Body"></div>
         <div class="step-nav">
             <button class="btn-back" onclick="goToStep(1)">&larr; Back</button>
-            <button class="btn-next" id="step2Next" disabled onclick="goToStep(3)">Next &rarr;</button>
+            <button class="btn-next" id="step2Next" disabled onclick="goToStep3FromStep2()">Next &rarr;</button>
         </div>
     </div>
 
-    <!-- Step 3: Review (placeholder for Task 7) -->
-    <div class="step-content" id="step3Content"></div>
+    <!-- Step 3: Review -->
+    <div class="step-content" id="step3Content">
+        <div id="step3Body"></div>
+        <div class="step-nav">
+            <button class="btn-back" onclick="goToStep(2)">&larr; Back</button>
+            <button class="btn-next" id="startMigrationBtn" disabled onclick="startMigration()">Start Migration &rarr;</button>
+        </div>
+    </div>
 
     <!-- Step 4: Execute (placeholder for Task 8) -->
     <div class="step-content" id="step4Content"></div>
@@ -543,6 +562,77 @@ function toggleRowExpand(index) {
     // Update arrow indicator
     var arrow = row.querySelector('span:last-child');
     if (arrow) arrow.innerHTML = migrationTables[index].columnMap.length + ' columns ' + (isExpanded ? '&#9660;' : '&#9650;');
+}
+
+// --- esc alias ---
+var esc = escHtml;
+
+// --- Step 3: render review ---
+function renderStep3() {
+    var selected = migrationTables.filter(function(t) { return t.selected; });
+    var html = '<div class="review-summary">';
+    html += '<h2 style="color:var(--text-primary);margin-bottom:16px">Migration Summary</h2>';
+    html += '<div class="review-info">';
+    html += '<div><strong>Source:</strong> ' + esc(sourceSession.database) + ' (' + esc(sourceSession.version) + ')</div>';
+    html += '<div><strong>Target:</strong> ' + esc(targetSession.database) + ' (' + esc(targetSession.version) + ')</div>';
+    html += '<div><strong>Tables:</strong> ' + selected.length + ' selected</div>';
+    html += '</div>';
+
+    // Warnings
+    var truncateTables = selected.filter(function(t) { return t.strategy === 'truncate'; });
+    var skippedCols = selected.reduce(function(sum, t) { return sum + t.columnMap.filter(function(c) { return c.skip; }).length; }, 0);
+
+    if (truncateTables.length > 0 || skippedCols > 0 || sourceSession.dbType !== targetSession.dbType) {
+        html += '<div class="review-warnings">';
+        if (truncateTables.length > 0) {
+            html += '<div class="warning-item">⚠️ <strong>Truncate &amp; Replace:</strong> ALL existing data will be DELETED from: ' + truncateTables.map(function(t) { return esc(t.name); }).join(', ') + '</div>';
+        }
+        if (skippedCols > 0) {
+            html += '<div class="warning-item">⚠️ <strong>' + skippedCols + ' columns</strong> will be skipped (auto-increment or no target match)</div>';
+        }
+        if (sourceSession.dbType !== targetSession.dbType) {
+            html += '<div class="warning-item">⚠️ <strong>Cross-engine migration</strong> — type conversions will be applied</div>';
+        }
+        html += '</div>';
+    }
+
+    // Per-table breakdown
+    html += '<table class="review-table"><thead><tr><th>Table</th><th>Strategy</th><th>Columns</th><th>Skipped</th></tr></thead><tbody>';
+    for (var i = 0; i < selected.length; i++) {
+        var t = selected[i];
+        var mappedCols = t.columnMap.filter(function(c) { return !c.skip; }).length;
+        var skipped = t.columnMap.filter(function(c) { return c.skip; }).length;
+        var stratLabel = t.strategy === 'insert' ? 'Insert only' : t.strategy === 'upsert' ? 'Upsert' : '⚠️ Truncate &amp; replace';
+        html += '<tr><td>' + esc(t.name) + '</td><td>' + stratLabel + '</td><td>' + mappedCols + '</td><td>' + skipped + '</td></tr>';
+    }
+    html += '</tbody></table>';
+
+    // Confirmation
+    html += '<div class="confirm-section">';
+    html += '<label class="confirm-check"><input type="checkbox" id="confirmCheck" onchange="updateConfirmButton()"> I understand that this will modify data in the target database and this action cannot be automatically undone</label>';
+    html += '<div class="confirm-input"><label>Type the target database name to confirm: <strong>' + esc(targetSession.database) + '</strong></label>';
+    html += '<input type="text" id="confirmName" oninput="updateConfirmButton()" placeholder="Type database name..."></div>';
+    html += '</div>';
+    html += '</div>';
+
+    document.getElementById('step3Body').innerHTML = html;
+}
+
+function updateConfirmButton() {
+    var checked = document.getElementById('confirmCheck').checked;
+    var name = document.getElementById('confirmName').value.trim();
+    var matches = name === targetSession.database;
+    document.getElementById('startMigrationBtn').disabled = !(checked && matches);
+}
+
+function goToStep3FromStep2() {
+    renderStep3();
+    goToStep(3);
+}
+
+function startMigration() {
+    // Stub: Task 8 will replace this with POST /api/migrate
+    goToStep(4);
 }
 
 // --- Connect to database ---
