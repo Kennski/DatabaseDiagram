@@ -152,7 +152,7 @@ body {
             <div class="connect-panel">
                 <h3>Source (A) &mdash; Read from</h3>
                 <div class="form-group">
-                    <label>Database Type</label>
+                    <label for="srcDbType">Database Type</label>
                     <select id="srcDbType">
                         <option value="mysql">MySQL</option>
                         <option value="postgres">PostgreSQL</option>
@@ -162,29 +162,29 @@ body {
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Host</label>
+                        <label for="srcHost">Host</label>
                         <input type="text" id="srcHost" placeholder="localhost">
                     </div>
                     <div class="form-group">
-                        <label>Port</label>
+                        <label for="srcPort">Port</label>
                         <input type="text" id="srcPort" placeholder="3306">
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>User</label>
+                        <label for="srcUser">User</label>
                         <input type="text" id="srcUser" placeholder="root">
                     </div>
                     <div class="form-group">
-                        <label>Password</label>
+                        <label for="srcPassword">Password</label>
                         <input type="password" id="srcPassword">
                     </div>
                 </div>
                 <div class="form-group">
-                    <label>Database</label>
+                    <label for="srcDatabase">Database</label>
                     <input type="text" id="srcDatabase" placeholder="mydb">
                 </div>
-                <button class="connect-btn" onclick="connectDB('source')">Connect</button>
+                <button class="connect-btn" id="srcConnectBtn" onclick="connectDB('source')">Connect</button>
                 <div class="connect-badge" id="srcBadge"></div>
             </div>
 
@@ -192,7 +192,7 @@ body {
             <div class="connect-panel">
                 <h3>Target (B) &mdash; Write to</h3>
                 <div class="form-group">
-                    <label>Database Type</label>
+                    <label for="tgtDbType">Database Type</label>
                     <select id="tgtDbType">
                         <option value="mysql">MySQL</option>
                         <option value="postgres">PostgreSQL</option>
@@ -202,29 +202,29 @@ body {
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Host</label>
+                        <label for="tgtHost">Host</label>
                         <input type="text" id="tgtHost" placeholder="localhost">
                     </div>
                     <div class="form-group">
-                        <label>Port</label>
+                        <label for="tgtPort">Port</label>
                         <input type="text" id="tgtPort" placeholder="3306">
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>User</label>
+                        <label for="tgtUser">User</label>
                         <input type="text" id="tgtUser" placeholder="root">
                     </div>
                     <div class="form-group">
-                        <label>Password</label>
+                        <label for="tgtPassword">Password</label>
                         <input type="password" id="tgtPassword">
                     </div>
                 </div>
                 <div class="form-group">
-                    <label>Database</label>
+                    <label for="tgtDatabase">Database</label>
                     <input type="text" id="tgtDatabase" placeholder="mydb">
                 </div>
-                <button class="connect-btn" onclick="connectDB('target')">Connect</button>
+                <button class="connect-btn" id="tgtConnectBtn" onclick="connectDB('target')">Connect</button>
                 <div class="connect-badge" id="tgtBadge"></div>
             </div>
         </div>
@@ -322,9 +322,9 @@ function goToStep(n) {
         if (i < n) el.classList.add('done');
         else if (i === n) el.classList.add('active');
     }
-    for (var i = 1; i <= 4; i++) {
-        var c = document.getElementById('step' + i + 'Content');
-        if (c) c.classList.toggle('active', i === n);
+    for (var j = 1; j <= 4; j++) {
+        var c = document.getElementById('step' + j + 'Content');
+        if (c) c.classList.toggle('active', j === n);
     }
     currentStep = n;
 }
@@ -337,6 +337,9 @@ function updateNextButton() {
 
 // --- Connect to database ---
 async function connectDB(side) {
+    var btn = document.getElementById(side === 'source' ? 'srcConnectBtn' : 'tgtConnectBtn');
+    if (btn && btn.disabled) return;  // already in flight
+
     var prefix = side === 'source' ? 'src' : 'tgt';
     var body = {
         dbType: document.getElementById(prefix + 'DbType').value,
@@ -352,7 +355,6 @@ async function connectDB(side) {
         return;
     }
 
-    var btn = document.querySelector('.connect-panel:' + (side === 'source' ? 'first-child' : 'last-child') + ' .connect-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Connecting...'; }
 
     try {
