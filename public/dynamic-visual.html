@@ -55,6 +55,8 @@ body {
 .nav-tab.diff-tab.has-diff { opacity: 1; }
 .nav-tab.query-tab { opacity: 0.4; }
 .nav-tab.query-tab.has-query { opacity: 1; }
+.nav-tab.migrate-tab { opacity: 0.4; }
+.nav-tab.migrate-tab.has-migrate { opacity: 1; }
 .nav-right { display: flex; align-items: center; gap: 10px; }
 .nav-new-btn { border: 1px solid var(--border); background: transparent; color: var(--text-secondary); border-radius: 8px; padding: 6px 14px; font-size: 12px; text-decoration: none; white-space: nowrap; cursor: pointer; }
 .nav-new-btn:hover { border-color: var(--accent); color: var(--text-primary); }
@@ -355,6 +357,7 @@ body {
         <a href="/dynamic-analysis.html" class="nav-tab">Analysis</a>
         <a href="/dynamic-diff.html" class="nav-tab diff-tab" id="diffTab">Diff</a>
         <a href="/dynamic-query.html" class="nav-tab query-tab" id="queryTab">Query</a>
+        <a href="/dynamic-migrate.html" class="nav-tab migrate-tab" id="migrateTab">Migrate</a>
     </div>
     <div class="nav-right">
         <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
@@ -443,6 +446,13 @@ function loadNotes() {
     var queryTab = document.getElementById('queryTab');
     if (queryTab && sessionStorage.getItem('dbdiagram_query_state')) {
         queryTab.classList.add('has-query');
+    }
+})();
+
+(function() {
+    var migrateTab = document.getElementById('migrateTab');
+    if (migrateTab && sessionStorage.getItem('dbdiagram_migrate_session')) {
+        migrateTab.classList.add('has-migrate');
     }
 })();
 

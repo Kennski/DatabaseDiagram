@@ -400,6 +400,8 @@ body {
 /* Theme toggle */
 .theme-toggle { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 16px; line-height: 1; }
 .theme-toggle:hover { border-color: var(--accent); }
+.nav-tab.migrate-tab { color: var(--text-secondary); text-decoration: none; font-size: 13px; font-weight: 500; padding: 4px 10px; border: 1px solid var(--border); border-radius: 8px; opacity: 0.4; }
+.nav-tab.migrate-tab.has-migrate { opacity: 1; }
 
 .auto-detected-label { color: var(--accent); font-size: 12px; margin-left: 8px; animation: fadeIn 0.3s ease; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -411,6 +413,7 @@ body {
 
 <nav class="global-nav">
     <a href="/" class="app-name">DatabaseDiagram</a>
+    <a href="/dynamic-migrate.html" class="nav-tab migrate-tab" id="migrateTab">Migrate</a>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
 </nav>
 
@@ -611,6 +614,13 @@ function toggleTheme() {
         document.documentElement.setAttribute('data-theme', 'light');
         var btn = document.getElementById('themeToggle');
         if (btn) btn.textContent = '☀️';
+    }
+})();
+
+(function() {
+    var migrateTab = document.getElementById('migrateTab');
+    if (migrateTab && sessionStorage.getItem('dbdiagram_migrate_session')) {
+        migrateTab.classList.add('has-migrate');
     }
 })();
 
