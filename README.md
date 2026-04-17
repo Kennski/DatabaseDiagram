@@ -52,6 +52,14 @@ An interactive web-based tool for visualizing and analyzing database schemas. Co
 - **Schema Diff** — Compare two schemas side-by-side from any combination of live connections, SQL files, or the currently loaded schema. Shows added, removed, and modified tables with column-level change details
 - **Diff Export** — Download the comparison as a Markdown report or share via compressed URL
 
+### Data Migration
+- **Live Migration** — Migrate data between any combination of MySQL, PostgreSQL, and SQL Server databases with a guided 4-step wizard
+- **Cross-Engine Support** — Automatic type conversion when migrating between different database engines (e.g., MySQL tinyint(1) → PostgreSQL boolean)
+- **Per-Table Control** — Choose conflict strategy per table: insert only, upsert (insert or update), or truncate & replace
+- **Column Mapping** — Automatic column matching with visual type compatibility indicators and the ability to skip or remap columns
+- **Safety First** — Mandatory review step with full migration summary, explicit confirmation (checkbox + type database name), per-table transactions, and cancel support
+- **Live Progress** — Real-time progress tracking with per-table status, row counts, and error reporting
+
 ---
 
 ## Prerequisites
@@ -126,7 +134,8 @@ An interactive web-based tool for visualizing and analyzing database schemas. Co
 │   ├── dynamic-visual.html      # Visual diagram
 │   ├── dynamic-analysis.html    # Schema analysis & tips
 │   ├── dynamic-diff.html        # Schema diff / comparison
-│   └── dynamic-query.html       # Interactive SQL query builder
+│   ├── dynamic-query.html       # Interactive SQL query builder
+│   └── dynamic-migrate.html     # Live data migration wizard
 ├── docs/
 │   └── superpowers/
 │       ├── specs/               # Design specifications
