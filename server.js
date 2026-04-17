@@ -404,7 +404,7 @@ app.post('/api/connect', async (req, res) => {
         resetIdleTimer(sessionId);
 
         res.json({
-            sessionId, database, version: result.version,
+            sessionId, dbType: type, database, version: result.version,
             tableCount: Object.keys(result.schema).length,
             schema: result.schema
         });
@@ -601,13 +601,13 @@ async function runMigration(migrationId, source, target, tables, state) {
             const count = await getRowCount(source, tableConfig.name);
             tableState.totalRows = count;
 
+            // Disable FK checks on target (before truncate so FK-referenced tables can be cleared)
+            await disableFKChecks(target);
+
             // Truncate if strategy requires
             if (tableConfig.strategy === 'truncate') {
                 await truncateTable(target, tableConfig.name);
             }
-
-            // Disable FK checks on target
-            await disableFKChecks(target);
 
             // Migrate in batches
             let offset = 0;

@@ -681,7 +681,10 @@ async function startMigration() {
 function startPolling() {
     pollInterval = setInterval(async () => {
         try {
-            var res = await fetch('/api/migrate/' + currentMigrationId + '/status');
+            var url = '/api/migrate/' + currentMigrationId + '/status'
+                + '?sourceSessionId=' + encodeURIComponent(sourceSession.sessionId)
+                + '&targetSessionId=' + encodeURIComponent(targetSession.sessionId);
+            var res = await fetch(url);
             var data = await res.json();
             renderProgress(data);
             if (data.status === 'complete' || data.status === 'error' || data.status === 'cancelled') {
