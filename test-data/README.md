@@ -1,11 +1,16 @@
 # Migration Test Data
 
-Two almost-identical databases for exercising the data migration feature.
+Almost-identical databases for exercising the data migration feature. Pick one pair.
 
-- **Source:** MySQL — `migration_source` (fully populated)
-- **Target:** PostgreSQL — `migration_target` (schema + stale copies of 2 users and 2 products)
+**Source:** MySQL — `migration_source` (fully populated — shared by both pairs)
 
-The cross-engine pair covers the interesting conversions automatically:
+Pair A — **same-engine** (MySQL → MySQL, no PostgreSQL install needed):
+- **Target:** MySQL — `migration_target` (same schema, stale copies of 2 users and 2 products)
+- Tests: table matching, column mapping, all three conflict strategies, FK ordering, auto-increment skip.
+
+Pair B — **cross-engine** (MySQL → PostgreSQL):
+- **Target:** PostgreSQL — `migration_target`
+- Adds coverage for type conversion:
 
 | Source type (MySQL) | Target type (PostgreSQL) | What it tests |
 |---|---|---|
@@ -17,13 +22,21 @@ The cross-engine pair covers the interesting conversions automatically:
 
 ## Setup
 
-Run `source-mysql.sql` on your MySQL server and `target-postgres.sql` on your PostgreSQL server. Both scripts drop-and-recreate their database, so they are safe to re-run.
+All scripts drop-and-recreate their database, so they are safe to re-run.
+
+### Pair A: MySQL → MySQL
 
 ```bash
-# MySQL
 mysql -u root -p < test-data/source-mysql.sql
+mysql -u root -p < test-data/target-mysql.sql
+```
 
-# PostgreSQL (run while connected as a superuser like 'postgres')
+Both databases live on the same MySQL server, just with different names (`migration_source` and `migration_target`).
+
+### Pair B: MySQL → PostgreSQL
+
+```bash
+mysql -u root -p < test-data/source-mysql.sql
 psql -U postgres -f test-data/target-postgres.sql
 ```
 
@@ -32,7 +45,7 @@ psql -U postgres -f test-data/target-postgres.sql
 Run the app, open `http://localhost:3000/dynamic-migrate.html`, and connect:
 
 - **Source:** MySQL, host `localhost`, database `migration_source`
-- **Target:** PostgreSQL, host `localhost`, database `migration_target`
+- **Target:** MySQL or PostgreSQL, host `localhost`, database `migration_target`
 
 Then try each conflict strategy on the `users` and `products` tables to see the behaviours:
 
