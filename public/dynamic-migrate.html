@@ -704,7 +704,7 @@ function renderProgress(data) {
     var totalTables = data.tables.length;
     var overallPct = totalTables > 0 ? Math.round(doneTables / totalTables * 100) : 0;
 
-    if (data.status === 'complete' || data.status === 'cancelled') {
+    if (data.status === 'complete' || data.status === 'cancelled' || data.status === 'error') {
         // Completion screen
         var successCount = data.tables.filter(t => t.status === 'done').length;
         var errorCount = data.tables.filter(t => t.status === 'error').length;
@@ -713,7 +713,10 @@ function renderProgress(data) {
         var totalTime = data.tables.reduce((s, t) => s + (t.time || 0), 0);
 
         html += '<div class="complete-summary">';
-        html += '<h2>' + (data.status === 'complete' ? '✅ Migration Complete' : '⏹ Migration Cancelled') + '</h2>';
+        var heading = data.status === 'complete' ? '✅ Migration Complete'
+                    : data.status === 'cancelled' ? '⏹ Migration Cancelled'
+                    : '❌ Migration Failed';
+        html += '<h2>' + heading + '</h2>';
         html += '<div class="complete-stats">';
         html += '<div>' + totalTables + ' tables processed in ' + (totalTime / 1000).toFixed(1) + 's</div>';
         if (successCount > 0) html += '<div class="stat-done">✅ ' + successCount + ' successful (' + totalRows.toLocaleString() + ' rows)</div>';
@@ -723,10 +726,13 @@ function renderProgress(data) {
 
         // Error details
         var errorTables = data.tables.filter(t => t.status === 'error');
-        if (errorTables.length > 0) {
+        if (errorTables.length > 0 || data.error) {
             html += '<div class="error-details"><h3>Error Details</h3>';
             for (var t of errorTables) {
                 html += '<div class="error-item"><strong>' + esc(t.name) + ':</strong> ' + esc(t.error) + '</div>';
+            }
+            if (data.error) {
+                html += '<div class="error-item">' + esc(data.error) + '</div>';
             }
             html += '</div>';
         }
