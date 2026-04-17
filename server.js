@@ -360,11 +360,7 @@ app.post('/api/connect', async (req, res) => {
         switch (type) {
             case 'mysql':
             case 'mariadb': {
-                connection = await mysql.createConnection({
-                    host, port: parseInt(port) || 3306, user, password: password || '', database
-                });
                 result = await fetchMysqlSchema(host, port, user, password, database);
-                // Re-create connection for persistent use (fetchMysqlSchema closes its own)
                 connection = await mysql.createConnection({
                     host, port: parseInt(port) || 3306, user, password: password || '', database
                 });
@@ -397,7 +393,7 @@ app.post('/api/connect', async (req, res) => {
 
         const sessionId = crypto.randomUUID();
         const session = {
-            connection, dbType: type, database, version: result.version,
+            connection, sessionId, dbType: type, database, version: result.version,
             schema: result.schema, lastActivity: Date.now(), timeoutHandle: null
         };
         connectionPool.set(sessionId, session);
@@ -409,6 +405,17 @@ app.post('/api/connect', async (req, res) => {
             schema: result.schema
         });
     } catch (err) {
+        // Clean up any connection that was opened but not yet stored in the pool
+        if (connection) {
+            try {
+                const type = (req.body.dbType || 'mysql').toLowerCase();
+                if (type === 'mssql' || type === 'sqlserver') {
+                    await connection.close();
+                } else {
+                    await connection.end();
+                }
+            } catch (e) { /* ignore cleanup errors */ }
+        }
         console.error('Connect error:', err.message);
         res.status(500).json({ error: err.message });
     }
