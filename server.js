@@ -467,6 +467,7 @@ app.post('/api/migrate', async (req, res) => {
     runMigration(migrationId, source, target, tables, migrationState).catch(err => {
         migrationState.status = 'error';
         migrationState.error = err.message;
+        setTimeout(() => migrations.delete(migrationId), 30 * 60 * 1000);
     });
 
     res.json({ migrationId });
@@ -634,7 +635,7 @@ async function runMigration(migrationId, source, target, tables, state) {
             }
         } catch (err) {
             tableState.status = 'error';
-            tableState.error = err.message;
+            tableState.error = `After ${tableState.migratedRows} rows: ${err.message}`;
             try { await enableFKChecks(target); } catch(e) {}
         }
 
@@ -647,6 +648,9 @@ async function runMigration(migrationId, source, target, tables, state) {
     } else if (state.cancelFlag) {
         state.status = 'cancelled';
     }
+    // Schedule cleanup: delete migration state 30 min after terminal status
+    // (gives clients time to fetch final status)
+    setTimeout(() => migrations.delete(migrationId), 30 * 60 * 1000);
 }
 
 async function getRowCount(session, tableName) {
@@ -742,6 +746,7 @@ async function writeBatch(session, tableName, rows, strategy, columnMap) {
             // SQL Server — use MERGE for upsert, simple INSERT for insert-only
             const valuesStr = values.map(v => v === null ? 'NULL' : typeof v === 'string' ? `N'${v.replace(/'/g, "''")}'` : v).join(', ');
             if (strategy === 'upsert') {
+                const pkQuotedCols = columnMap.filter(c => c.isPK && !c.skip).map(c => quoteIdentifier(session.dbType, c.targetCol));
                 // Simple approach: try INSERT, if fails try UPDATE
                 try {
                     await session.connection.request().query(
@@ -752,7 +757,9 @@ async function writeBatch(session, tableName, rows, strategy, columnMap) {
                         // Duplicate key — update instead
                         const pkCol = columnMap.find(c => c.isPK && !c.skip);
                         if (pkCol) {
-                            const setClause = quotedCols.map((c, i) => `${c} = ${values[i] === null ? 'NULL' : typeof values[i] === 'string' ? `N'${values[i].replace(/'/g, "''")}'` : values[i]}`).join(', ');
+                            const setClause = quotedCols.map((c, i) => ({ c, i }))
+                                .filter(({ c }) => !pkQuotedCols.includes(c))
+                                .map(({ c, i }) => `${c} = ${values[i] === null ? 'NULL' : typeof values[i] === 'string' ? `N'${values[i].replace(/'/g, "''")}'` : values[i]}`).join(', ');
                             const pkValue = row[pkCol.targetCol];
                             await session.connection.request().query(
                                 `UPDATE ${table} SET ${setClause} WHERE ${quoteIdentifier(session.dbType, pkCol.targetCol)} = ${typeof pkValue === 'string' ? `N'${pkValue.replace(/'/g, "''")}'` : pkValue}`
