@@ -355,7 +355,9 @@ function updateNextButton() {
 
 // --- Step 2: transition from Step 1 ---
 function goToStep2FromStep1() {
-    renderStep2();
+    if (migrationTables.length === 0) {
+        renderStep2();
+    }
     goToStep(2);
     updateStep2NextButton();
 }
@@ -449,7 +451,7 @@ function isCompatible(sourceType, targetType) {
 function renderTableRow(name, sourceTable, targetTable, columnMap, index) {
     var rowCount = sourceTable.rowCount !== undefined ? ' <span style="color:var(--text-muted);font-size:12px">(' + sourceTable.rowCount + ' rows)</span>' : '';
     var html = '';
-    html += '<div class="table-row" id="tableRow' + index + '" onclick="toggleRowExpand(' + index + ')">';
+    html += '<div class="table-row" id="tableRow' + index + '" tabindex="0" role="button" onclick="toggleRowExpand(' + index + ')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleRowExpand(' + index + ');}">';
     html += '<input type="checkbox" checked onclick="event.stopPropagation();toggleMigrateTable(' + index + ', this.checked)" id="tableCheck' + index + '">';
     html += '<span style="font-weight:600;font-size:14px">' + escHtml(name) + '</span>' + rowCount;
     html += '<span style="margin-left:auto;font-size:12px;color:var(--text-muted)">' + columnMap.length + ' columns &#9660;</span>';
@@ -586,6 +588,10 @@ async function connectDB(side) {
         badgeEl.style.display = 'inline-block';
 
         if (btn) { btn.disabled = false; btn.textContent = 'Reconnect'; }
+
+        migrationTables = [];
+        var step2Body = document.getElementById('step2Body');
+        if (step2Body) step2Body.innerHTML = '';
 
         sessionStorage.setItem('dbdiagram_migrate_session', 'active');
         updateNextButton();
